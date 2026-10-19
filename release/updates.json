@@ -1,0 +1,13 @@
+{
+  "addons": {
+    "betterroll@enigma": {
+      "updates": [
+        {
+          "version": "1.82.0",
+          "update_link": "https://raw.githubusercontent.com/kevinschiersch-code/betterroll/main/release/betterroll-firefox-1.82.0.xpi",
+          "update_hash": "sha256:2fc4c4e40c95389ce7b6747a88c9f9a607e1f80abcbef9b7ecb68482bbb0a2f8"
+        }
+      ]
+    }
+  }
+}
