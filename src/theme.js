@@ -22,8 +22,7 @@ let crlfActive = true; // Hauptschalter des Add-ons
 let crlfBg = "aurora"; // Hintergrund: aurora | glow | grid | banner (eigenes Bild) | video | off
 const CRLF_BGS = ["aurora", "glow", "grid", "banner", "video"];
 // Motive des Designs „Video“ (backgrounds/<name>.webm, Standbild backgrounds/blur/<name>.jpg)
-const CRLF_VIDEOS = ["haus_1", "haus_2", "baum_1", "baum_2", "altstadt_1", "altstadt_2",
-  "leuchtturm_1", "regen_1", "dach_1", "bahnsteig_1", "kirsch_1", "tempel_1"];
+const CRLF_VIDEOS = ["haus_1", "baum_1", "altstadt_2", "leuchtturm_1", "regen_1", "dach_1", "bahnsteig_1", "kirsch_1", "tempel_1"];
 let crlfVideo = "auto"; // ein Name aus CRLF_VIDEOS oder "auto" (wechselnd)
 
 // Klassen am <html> setzen: crlf-themed (Add-on an), crlf-dark, crlf-bg + crlf-bg-<name> (Hintergrund-Design)
@@ -1365,8 +1364,8 @@ chrome.storage.onChanged.addListener((c, area) => { if (area === "local" && c.cr
 // Die Videos liegen im Add-on (backgrounds/, web_accessible_resources), es wird nichts von außen geladen.
 // Ambilight: das scharfe Video mittig mit weich ausgeblendetem Rand, dahinter füllt ein kleines, stark weichgezeichnetes
 // Standbild (backgrounds/blur/) den Rest; ein zweites laufendes Video sähe gleich aus, kostet aber doppelt Rechenzeit.
-// „Wechselnd“ (pageVideo "auto"): alle 45 s ein anderes Motiv, sanft überblendet; gleiche Motive nie direkt nacheinander.
-const CRLF_VIDEO_SECS = 45, CRLF_VIDEO_FADE = 2500;
+// „Wechselnd“ (pageVideo "auto"): alle 60 s ein anderes Motiv, sanft überblendet; gleiche Motive nie direkt nacheinander.
+const CRLF_VIDEO_SECS = 60, CRLF_VIDEO_FADE = 2500;
 const crlfCalm = matchMedia("(prefers-reduced-motion: reduce)");
 let crlfVidFront = 0, crlfVidTimer = 0, crlfVidQueue = [], crlfVidBusy = false;
 // nächstes Motiv für „Wechselnd“: Runde reihum nach Motiv (Teil vor „_“: haus, baum, altstadt, leuchtturm …), zufällig gemischt

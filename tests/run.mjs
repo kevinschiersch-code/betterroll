@@ -68,7 +68,7 @@ function calendarHtml() {
 // kleiner Webserver für src/ und die Testseiten
 const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script><script>
   window.__ticks = 0; const si = window.setInterval; window.setInterval = (f, ms) => si(() => { window.__ticks++; f(); }, ms);
-  window.__clicks = 0;</script></head><body><video id="v" src="/src/backgrounds/haus_2.webm" muted loop width="320" height="180"></video>
+  window.__clicks = 0;</script></head><body><video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
   <button id="sk" style="display:none;width:120px;height:30px" onclick="__clicks++;v.currentTime+=3">Intro überspringen</button>
   <script src="/src/skip.js"></script></body></html>` };
 // langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
