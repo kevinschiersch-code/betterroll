@@ -59,7 +59,8 @@ function calendarHtml() {
     }
     body += "</ol></section>";
   }
-  const cal = ["diag", "i18n", "theme", "crcatalog", "languages", "match", "content", "comments", "rank", "dateformat", "series", "overlay", "speed", "skip"];
+  // Skripte in der Reihenfolge des Manifests (Kalender, dann die übrigen Crunchyroll-Seiten)
+  const cal = [...new Set(JSON.parse(fs.readFileSync(path.join(SRC, "manifest.json"), "utf8")).content_scripts.flatMap((c) => c.js))].map((f) => f.replace(/\.js$/, ""));
   return `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script>`
     + `<link rel="stylesheet" href="/src/theme.css"><link rel="stylesheet" href="/src/content.css"></head><body>${body}`
     + cal.map((f) => `<script src="/src/${f}.js"></script>`).join("") + `</body></html>`;
