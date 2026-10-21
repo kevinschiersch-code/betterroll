@@ -54,6 +54,7 @@ function calendarHtml() {
       const title = `Anime ${d}-${n}${dub ? " (German Dub)" : ""}`;
       body += `<li><article class="release js-release"><time class="available-time" datetime="${date}T1${n % 10}:00:00">1${n % 10}:00</time>`
         + `<div class="season-name"><a href="/de/series/G${d}X${n}/anime-${d}-${n}"><cite itemprop="name">${title}</cite></a></div>`
+        + `<div class="episode"><span>Folge ${n + 1}</span> <span>Verfügbar</span></div>`
         + `<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="160" height="90"><progress value="${(i % 4) / 3}" max="1"></progress></article></li>`;
     }
     body += "</ol></section>";
@@ -115,6 +116,22 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("★ markiert und oben", state.fav >= 1 && /^Anime 0-3\b/.test(state.day0[0]), state.day0.slice(0, 2).join(", "));
   ok("▼ ausgegraut und unten", state.dim >= 1 && /^Anime 0-1\b/.test(state.day0.at(-1)), state.day0.at(-1));
   ok("Knöpfe an den Karten und unten rechts", state.actions > 0 && state.tools);
+
+  // Seite zeichnet die Folgen-Zeile neu (wie beim Überfahren): 💬 und gekürzter Text müssen vor dem nächsten Bild zurück sein
+  const redraw = await page.evaluate(async () => {
+    const card = [...document.querySelectorAll(".crlf-item")].find((c) => getComputedStyle(c).display !== "none" && c.querySelector(".crlf-epline .crlf-btn-talk"));
+    const line = card.querySelector(".crlf-epline");
+    const before = line.textContent.includes("Verfügbar");
+    const fresh = document.createElement("div");
+    fresh.className = "episode";
+    fresh.innerHTML = "<span>Folge 9</span> <span>Verfügbar</span>";
+    line.replaceWith(fresh);
+    await Promise.resolve(); await Promise.resolve(); // nur Mikroaufgaben, kein neues Bild
+    const now = card.querySelector(".crlf-epline");
+    return { before, talk: !!(now && now.querySelector(".crlf-btn-talk")), avail: now ? now.textContent.includes("Verfügbar") : true };
+  });
+  ok("„Verfügbar“ aus der Folgen-Zeile entfernt", !redraw.before);
+  ok("Neu gezeichnete Folgen-Zeile sofort repariert (kein Flackern)", redraw.talk && !redraw.avail, JSON.stringify(redraw));
 
   // Tastenkürzel: F im Eingabefeld nicht, sonst „nur Favoriten“
   await page.evaluate(() => { const i = document.createElement("input"); i.id = "q"; document.body.prepend(i); });

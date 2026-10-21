@@ -962,6 +962,26 @@ function scheduleFilter() {
   if (typeof crlfApplyTheme === "function") crlfApplyTheme(crlfTheme); // Titel des ☀/☾-Knopfs in der neuen Sprache
 })();
 
+// Crunchyroll zeichnet Teile einer Karte neu (z. B. die Folgen-Zeile beim Überfahren mit der Maus): 💬, ★/▼ und das
+// gekürzte „Folge 3“ sofort wiederherstellen, noch bevor der Browser das Bild zeichnet – der volle Durchlauf (applyFilter)
+// kommt erst ein Bild später, bis dahin war kurz die Originalzeile zu sehen (Flackern).
+function fixCardsNow(mutations) {
+  if (!settings.active) return;
+  const cards = new Set();
+  for (const m of mutations) {
+    const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+    const card = el && el.closest(RELEASE_SELECTOR);
+    if (!card || !card.isConnected) continue;
+    let outer = card; // äußerste Karte (verschachtelte Schema-Elemente)
+    for (let p = card.parentElement && card.parentElement.closest(RELEASE_SELECTOR); p; p = p.parentElement && p.parentElement.closest(RELEASE_SELECTOR)) outer = p;
+    if (releaseContainer(outer).classList.contains("crlf-item")) cards.add(outer);
+  }
+  for (const release of cards) {
+    const title = releaseTitle(release);
+    if (title !== null) ensureButtons(release, crBaseTitle(title));
+  }
+}
+
 // Start: Einstellungen und Markierungen laden, filtern, danach Änderungen der Seite beobachten
 chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (stored) => {
   settings = { ...CR_DEFAULT_SETTINGS, ...stored };
@@ -976,7 +996,7 @@ chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (stored) => {
         m.type === "characterData" ||
         [...m.addedNodes].some((n) => !(n.nodeType === 1 && (n.classList.contains("crlf-actions") || n.classList.contains("crlf-alt") || n.classList.contains("crlf-meta") || n.classList.contains("crlf-nofav"))))
       );
-      if (relevant) scheduleFilter();
+      if (relevant) { fixCardsNow(mutations); scheduleFilter(); }
     })).observe(document.body, { childList: true, subtree: true, characterData: true });
   });
 });
