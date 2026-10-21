@@ -588,6 +588,13 @@ function crlfImgInfo(img) {
   return { img, w, h, src: /^data:/.test(src) && img.dataset.src ? img.dataset.src : src };
 }
 
+// Bild der Seite noch nicht geladen? (ohne Größe, oder nur ein Platzhalter-Pixel, solange das echte Bild in data-src wartet)
+function crlfImgPending(img) {
+  const src = img.currentSrc || img.getAttribute("src") || "";
+  if (/^data:/.test(src) || !src) return !!img.dataset.src;
+  return !img.complete || !img.naturalWidth;
+}
+
 // Inhalte aus der Vorschau der Seite lesen: Titel (größte Schrift), Poster (Hochformat), Folgenbild (Querformat),
 // Beschreibung, Folgennummer/-titel, Fortschritt und Knöpfe. null, wenn kein Titel erkennbar ist.
 function crlfPeekData(pop) {
@@ -615,6 +622,8 @@ function crlfPeekData(pop) {
   const imgs = [...pop.querySelectorAll("img")].map(crlfImgInfo).filter((o) => o.src && o.w > 30 && o.h > 30);
   const poster = imgs.filter((o) => o.h > o.w).sort((a, b) => b.w * b.h - a.w * a.h)[0] || null;
   const thumb = imgs.filter((o) => o.w > o.h * 1.2).sort((a, b) => b.w * b.h - a.w * a.h)[0] || null;
+  // Bilder, die die Seite noch lädt (Größe unbekannt): dafür hält die Vorschau den Platz frei (crlfPeekBuild)
+  const pending = [...pop.querySelectorAll("img")].filter((i) => !i.closest(".crlf-peek") && crlfImgPending(i));
   // Beschreibung: längster Text vor dem Folgenbild (der Folgentitel steht danach)
   const desc = leaves.filter((e) => e !== title && e.textContent.trim().length >= 25 && !(thumb && (thumb.img.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING)))
     .sort((a, b) => b.textContent.length - a.textContent.length)[0];
@@ -655,7 +664,7 @@ function crlfPeekData(pop) {
   const sp = typeof crSplitSeason === "function" ? crSplitSeason(raw) : { title: raw };
   return { name: sp.title || raw, season: sp.season, part: sp.part, url: link ? link.href.split("?")[0] : null,
     poster: poster && poster.src, thumb: thumb && thumb.src, desc: desc ? desc.textContent.trim() : "",
-    epNo, epTitle, progress, buttons: buttons.map((b) => {
+    epNo, epTitle, progress, pending, buttons: buttons.map((b) => {
       const a = b.closest("a[href]") || b.querySelector("a[href]");
       return { el: b, label: b.textContent.trim(), href: b.href || (a && a.href) || "", play: !/playlist|watchlist/i.test(b.textContent) };
     }) };
@@ -686,6 +695,7 @@ function crlfWithin(el, pad) {
   const r = el.getBoundingClientRect();
   return crlfMouse.x >= r.left - pad && crlfMouse.x <= r.right + pad && crlfMouse.y >= r.top - pad && crlfMouse.y <= r.bottom + pad;
 }
+const crlfPkWait = new WeakSet(); // Bilder der Seite, auf deren Laden die Vorschau schon wartet
 let crlfLastPeek = { name: "", card: null }; // zuletzt gezeigter Anime und seine Karte
 // Titel zum Vergleichen: klein, ohne Klammerzusätze und Satzzeichen
 const crlfNorm = (t) => (t || "").toLowerCase().replace(/\([^)]*\)/g, "").replace(/[^\p{L}\p{N}]/gu, "");
@@ -709,8 +719,12 @@ function crlfPeek(pop) {
   if ((cs && ps && cs !== ps) || (stale && a && b && !a.startsWith(b) && !b.startsWith(a))) { if (crlfPeekCard !== card) crlfPeekClose(); return true; }
   crlfLastPeek = { name: d.name, card };
   crlfPeekSrc = pop;
+  // nachgeladene Bilder der Seite: noch einmal lesen, sobald sie da sind (Laden löst sonst keine Änderung aus)
+  for (const i of d.pending) if (!crlfPkWait.has(i)) { crlfPkWait.add(i); i.addEventListener("load", () => { crlfPkWait.delete(i); if (crlfPeekSrc === pop) crlfPeek(pop); }, { once: true }); }
   const key = [d.name, d.season, d.poster, d.thumb, d.epTitle, d.progress, d.desc.length].join("|");
   if (crlfPeekEl && crlfPeekEl.isConnected && key === crlfPeekKey) { crlfPlacePeek(); return true; }
+  // gleiche Vorschau, nur Bild/Folge nachgeladen: in den freigehaltenen Platz einsetzen statt neu bauen (kein Springen)
+  if (crlfPeekEl && crlfPeekEl.isConnected && crlfPeekFill(crlfPeekEl, d)) { crlfPeekKey = key; crlfPlacePeek(); return true; }
   crlfPeekBuild(d, key);
   return true;
 }
@@ -724,7 +738,10 @@ function crlfPeekBuild(d, key) {
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", T("Vorschau: {0}", d.name));
   const top = el("div", "crlf-pk-top");
+  // Poster/Folgenbild noch nicht geladen: Platz in fester Größe freihalten, damit später nichts verrutscht
+  const waitPoster = !d.poster && d.pending.length > 0, waitThumb = !d.thumb && d.pending.length > (waitPoster ? 1 : 0);
   if (d.poster) { const im = el("img", "crlf-pk-poster"); im.src = d.poster; im.alt = ""; top.append(im); }
+  else if (waitPoster) top.append(el("div", "crlf-pk-poster crlf-pk-ph"));
   const info = el("div", "crlf-pk-info");
   const h = el("div", "crlf-pk-title", d.name);
   if (d.season) {
@@ -778,11 +795,11 @@ function crlfPeekBuild(d, key) {
         .finally(() => { clearTimeout(t); show(); });
     }
   }
-  if (d.thumb) {
+  if (d.thumb || waitThumb) {
     const ep = el("div", "crlf-pk-ep");
     const th = el("div", "crlf-pk-thumb");
-    const im = el("img"); im.src = d.thumb; im.alt = "";
-    th.append(im);
+    if (d.thumb) { const im = el("img"); im.src = d.thumb; im.alt = ""; th.append(im); }
+    else ep.classList.add("crlf-pk-ph");
     if (d.epNo) th.append(el("b", null, d.epNo));
     // Fortschrittsbalken unter dem Bild, so breit wie das Bild (wie auf der Crunchyroll-Seite)
     const shot = el("div", "crlf-pk-shot");
@@ -794,11 +811,11 @@ function crlfPeekBuild(d, key) {
       bar.append(fill); shot.append(bar);
     }
     const txt = el("div", "crlf-pk-eptext");
-    if (d.epNo) txt.append(el("small", null, T("Folge {0}", d.epNo)));
-    if (d.epTitle) txt.append(el("span", null, d.epTitle));
+    crlfPeekEpText(txt, d);
     ep.append(shot, txt);
     panel.append(ep);
   }
+  panel._crlfData = d;
   document.documentElement.appendChild(panel);
   crlfPeekEl = panel;
   crlfPeekCard = crlfHoverCard;
@@ -809,6 +826,12 @@ function crlfPeekBuild(d, key) {
   crlfPeekRO = new ResizeObserver(() => crlfPlacePeek());
   crlfPeekRO.observe(panel);
   panel.querySelectorAll("img").forEach((i) => i.addEventListener("load", crlfPlacePeek));
+  // kommt ein freigehaltenes Bild nicht (z. B. Ladefehler), den leeren Platz nach einer Weile wieder entfernen
+  if (panel.querySelector(".crlf-pk-ph")) setTimeout(() => {
+    if (crlfPeekEl !== panel) return;
+    panel.querySelectorAll("div.crlf-pk-poster.crlf-pk-ph, .crlf-pk-ep.crlf-pk-ph").forEach((e) => e.remove());
+    crlfPlacePeek();
+  }, 4000);
   // offen bleiben, solange Original-Vorschau, Karte oder unsere Karte unter der Maus sind; erst nach kurzer Pause schließen
   // (nach Mausposition statt :hover – das ist zuverlässiger, auch über dem Spalt zwischen Karte und Vorschau)
   clearInterval(crlfPeekWatch);
@@ -818,6 +841,45 @@ function crlfPeekBuild(d, key) {
     if (inside) { crlfPeekSeen = Date.now(); return; }
     if (Date.now() - crlfPeekSeen > 500) crlfPeekClose();
   }, 120);
+}
+
+// Folgennummer und -titel neben dem Folgenbild
+function crlfPeekEpText(txt, d) {
+  txt.textContent = "";
+  const add = (tag, text) => { const e = document.createElement(tag); e.textContent = text; txt.append(e); };
+  if (d.epNo) add("small", T("Folge {0}", d.epNo));
+  if (d.epTitle) add("span", d.epTitle);
+}
+
+// Nachgeladenes Poster/Folgenbild in den freigehaltenen Platz der offenen Vorschau setzen.
+// false = passt nicht (anderer Anime, Text geändert oder kein Platz frei) -> neu bauen
+function crlfPeekFill(panel, d) {
+  const old = panel._crlfData;
+  if (!old || old.name !== d.name || old.season !== d.season || old.desc.length !== d.desc.length || old.progress !== d.progress) return false;
+  const ph = panel.querySelector("div.crlf-pk-poster.crlf-pk-ph"), ep = panel.querySelector(".crlf-pk-ep.crlf-pk-ph");
+  if (d.poster !== old.poster && !(ph && !old.poster)) return false;
+  if (d.thumb !== old.thumb && !(ep && !old.thumb)) return false;
+  if (d.poster && ph) {
+    const im = document.createElement("img"); im.className = "crlf-pk-poster"; im.alt = ""; im.src = d.poster;
+    im.addEventListener("load", crlfPlacePeek);
+    ph.replaceWith(im);
+  }
+  const ex = panel.querySelector(".crlf-pk-ep");
+  if (ex) {
+    if (d.thumb && ep) {
+      const im = document.createElement("img"); im.alt = ""; im.src = d.thumb;
+      im.addEventListener("load", crlfPlacePeek);
+      ex.querySelector(".crlf-pk-thumb").prepend(im);
+      ep.classList.remove("crlf-pk-ph");
+    }
+    const th = ex.querySelector(".crlf-pk-thumb");
+    let b = th.querySelector("b");
+    if (d.epNo && !b) { b = document.createElement("b"); th.append(b); }
+    if (b) { if (d.epNo) b.textContent = d.epNo; else b.remove(); }
+    crlfPeekEpText(ex.querySelector(".crlf-pk-eptext"), d);
+  }
+  panel._crlfData = d;
+  return true;
 }
 
 // Vorschau-Daten direkt aus einer Kalenderkarte (Handy: die Seite zeigt ohne Maus keine eigene Vorschau)
@@ -833,7 +895,7 @@ function crlfPeekFromCard(card) {
   if (watch) buttons.push({ el: null, label: T("Abspielen"), href: watch.href, play: true });
   if (url) buttons.push({ el: null, label: T("Zur Serie"), href: url, play: false });
   return { name: sp.title || raw, season: sp.season, part: sp.part, url, poster: img ? img.src : null, thumb: null, desc: "",
-    epNo: "", epTitle: "", progress: null, buttons, fromCard: true };
+    epNo: "", epTitle: "", progress: null, pending: [], buttons, fromCard: true };
 }
 
 // Langes Tippen (ca. 0,45 s, ohne Wischen) auf eine Karte öffnet die Vorschau; der folgende Klick öffnet dann nichts

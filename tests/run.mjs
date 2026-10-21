@@ -71,9 +71,21 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   window.__clicks = 0;</script></head><body><video id="v" src="/src/backgrounds/haus_2.webm" muted loop width="320" height="180"></video>
   <button id="sk" style="display:none;width:120px;height:30px" onclick="__clicks++;v.currentTime+=3">Intro überspringen</button>
   <script src="/src/skip.js"></script></body></html>` };
+// langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
+import zlib from "zlib";
+function png(w, h) {
+  const crc = (b) => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return ~c >>> 0; };
+  const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
+  const ih = Buffer.alloc(13); ih.writeUInt32BE(w, 0); ih.writeUInt32BE(h, 4); ih[8] = 8; ih[9] = 2;
+  const raw = Buffer.alloc((w * 3 + 1) * h, 120);
+  for (let y = 0; y < h; y++) raw[y * (w * 3 + 1)] = 0;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ih), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+const SLOW = { "/slow/poster.png": png(200, 300), "/slow/thumb.png": png(320, 180) };
 const TYPES = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".webm": "video/webm", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg" };
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);
+  if (SLOW[url]) return setTimeout(() => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(SLOW[url]); }, 700);
   if (pages[url]) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(pages[url]()); }
   const file = path.join(ROOT, url);
   if (!file.startsWith(SRC) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
@@ -173,6 +185,35 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   // Messung (diag): Zeiten der Durchläufe
   const stats = await page.evaluate(() => Object.fromEntries([...crlfDiagStats].map(([k, s]) => [k, { n: s.n, max: Math.round(s.max) }])));
   for (const [k, s] of Object.entries(stats)) results.push({ name: `Messung: ${k}`, ok: true, info: `${s.n}× , längster ${s.max} ms`, measure: true });
+  // Vorschau beim Überfahren: Poster und Folgenbild der Seite laden noch -> Platz in fester Größe frei, danach verschiebt sich nichts
+  const card = page.locator(".crlf-item:visible").nth(2);
+  const box = await card.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const peek1 = await page.evaluate(() => {
+    const card = document.elementsFromPoint(crlfMouse.x, crlfMouse.y).map((e) => e.closest("article.release")).find(Boolean);
+    const pop = document.createElement("div");
+    pop.style.cssText = "position:absolute;z-index:50;width:300px";
+    pop.innerHTML = `<img src="/slow/poster.png?${Date.now()}"><h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2>`
+      + `<p>Eine Beschreibung, die lang genug ist, um als Beschreibung erkannt zu werden.</p><img src="/slow/thumb.png?${Date.now()}"><span>3</span><span>Der Folgentitel</span>`;
+    card.append(pop);
+    crlfHoverCard = card;
+    crlfPeek(pop);
+    window.__peek = crlfPeekEl;
+    // Lage innerhalb der Vorschau (die Einblend-Bewegung der ganzen Karte zählt nicht)
+    const r = (s) => { const e = crlfPeekEl && crlfPeekEl.querySelector(s); if (!e) return null; const a = e.getBoundingClientRect(), p = crlfPeekEl.getBoundingClientRect(); return { left: a.left - p.left, top: a.top - p.top }; };
+    window.__pos = () => ({ title: r(".crlf-pk-title"), desc: r(".crlf-pk-desc"), ep: r(".crlf-pk-ep"), h: crlfPeekEl ? crlfPeekEl.offsetHeight : 0 });
+    return new Promise((res) => setTimeout(() => res({ ...window.__pos(), ph: crlfPeekEl ? crlfPeekEl.querySelectorAll(".crlf-pk-ph").length : 0 }), 300)); // nach dem Einblenden
+  });
+  await page.waitForTimeout(1500);
+  const peek2 = await page.evaluate(() => ({ ...window.__pos(), same: window.__peek === crlfPeekEl,
+    poster: !!crlfPeekEl?.querySelector("img.crlf-pk-poster"), thumb: !!crlfPeekEl?.querySelector(".crlf-pk-thumb img"), ph: crlfPeekEl?.querySelectorAll(".crlf-pk-ph").length,
+    eptext: crlfPeekEl?.querySelector(".crlf-pk-eptext")?.textContent }));
+  const samePos = (a, b) => a && b && Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
+  ok("Vorschau: Platz für ladende Bilder freigehalten", peek1.ph === 2, `${peek1.ph} Platzhalter`);
+  ok("Vorschau: Bilder nachgeladen ohne Verschieben", peek2.same && peek2.poster && peek2.thumb && !peek2.ph && samePos(peek1.title, peek2.title)
+    && samePos(peek1.desc, peek2.desc) && samePos(peek1.ep, peek2.ep) && peek1.h === peek2.h, JSON.stringify({ peek1, peek2 }));
+  await page.evaluate(() => crlfPeekClose());
+
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
