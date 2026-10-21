@@ -309,7 +309,7 @@ chrome.runtime.onInstalled.addListener(mkStartup);
 // „com.betterroll.updater“), den der Installer bzw. „Updates einrichten“ anmeldet: Er startet updater.ps1, der nur
 // die öffentliche latest.json liest, das Paket lädt, dessen SHA-256 prüft und die Dateien austauscht. Es wird nichts
 // gesendet. Das Popup fragt beim Öffnen nach („check“) und zeigt ↻ als bereit; ein Klick holt das Update („update“),
-// danach lädt sich das Add-on neu. Kein Zeitplan mehr im Browser; der Updater prüft nur noch bei der Windows-Anmeldung.
+// danach lädt sich das Add-on neu. Der Updater selbst tauscht nur bei der Windows-Anmeldung still aus.
 const HOST = "com.betterroll.updater";
 // Helfer fragen; fehlt er (noch nicht eingerichtet), kommt { ok: false, missing: true }
 function native(cmd) {
@@ -322,12 +322,33 @@ function native(cmd) {
     });
   });
 }
+// Update bereit -> Symbol in der Browser-Leiste dezent mit hellem Ring (kein Blinken, kein Badge-Text).
+// Geprüft wird beim Browserstart, nach Installation/Update und alle 6 Stunden (ein kurzer Aufruf des Helfers,
+// der nur latest.json liest) sowie bei jedem Öffnen des Popups. Nach dem Update lädt sich das Add-on neu,
+// die Prüfung danach findet nichts Neueres mehr und setzt das normale Symbol.
+const UPD_ICON = { 16: "icons/icon16-upd.png", 32: "icons/icon32-upd.png", 48: "icons/icon48-upd.png" };
+const STD_ICON = { 16: "icons/icon16.png", 48: "icons/icon48.png", 128: "icons/icon128.png" };
+function markIcon(res) {
+  if (!res || !res.ok || !chrome.action) return; // Helfer fehlt oder offline: Symbol so lassen
+  const on = !!res.newer;
+  chrome.action.setIcon({ path: on ? UPD_ICON : STD_ICON }, () => void chrome.runtime.lastError);
+  chrome.action.setTitle({ title: on ? "BetterRoll – Update auf v" + res.latest + " bereit" : "BetterRoll" });
+}
+const updCheck = () => native("check").then((res) => { markIcon(res); return res; });
+if (chrome.alarms) {
+  // nur anlegen, wenn er fehlt: der Hintergrund startet oft neu, das soll den Zeitplan nicht zurücksetzen
+  chrome.alarms.get("crlf-update-check", (a) => { if (!a) chrome.alarms.create("crlf-update-check", { periodInMinutes: 360 }); });
+  chrome.alarms.onAlarm.addListener((a) => { if (a.name === "crlf-update-check") updCheck(); });
+}
+chrome.runtime.onStartup.addListener(() => updCheck());
+chrome.runtime.onInstalled.addListener(() => updCheck());
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || (msg.type !== "crlf-update-check" && msg.type !== "crlf-update-run")) return;
-  if (msg.type === "crlf-update-check") { native("check").then(sendResponse); return true; }
+  if (msg.type === "crlf-update-check") { updCheck().then(sendResponse); return true; }
   native("update").then(async (res) => {
     sendResponse(res);
     if (!res.ok || !res.updated) return;
+    markIcon({ ok: true, newer: false });
     // offene Kalender-Tabs vorwarnen, dann neu laden (die Tabs laden sich danach selbst neu)
     const tabs = await chrome.tabs.query({});
     await Promise.all(tabs.map((t) => new Promise((done) => chrome.tabs.sendMessage(t.id, { type: "crlf-reload-soon" }, () => { void chrome.runtime.lastError; done(); }))));

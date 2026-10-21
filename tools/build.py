@@ -61,6 +61,8 @@ def store_variant(folder: Path, firefox: bool):
     bg.write_text(s[:a] + s[b + len("// @updater-end"):].lstrip("\n"), encoding="utf-8")
     # Crunchyroll-Katalog (crcatalog.js) nur in der privaten Fassung: Datei, Eintrag und Schalter im Popup entfernen
     (folder / "crcatalog.js").unlink(missing_ok=True)
+    for f in (folder / "icons").glob("*-upd.png"):  # Update-Hinweis am Symbol gibt es nur mit Updater
+        f.unlink()
     ph = folder / "popup.html"
     h = ph.read_text(encoding="utf-8")
     if "<!-- @crapi-begin -->" in h:
