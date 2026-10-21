@@ -22,7 +22,7 @@ let crlfActive = true; // Hauptschalter des Add-ons
 let crlfBg = "aurora"; // Hintergrund: aurora | glow | grid | banner (eigenes Bild) | video | off
 const CRLF_BGS = ["aurora", "glow", "grid", "banner", "video"];
 // Motive des Designs „Video“ (backgrounds/<name>.webm, Standbild backgrounds/blur/<name>.jpg)
-const CRLF_VIDEOS = ["haus_1", "baum_1", "altstadt_2", "leuchtturm_1", "regen_1", "dach_1", "bahnsteig_1", "kirsch_1", "tempel_1"];
+const CRLF_VIDEOS = ["haus_1", "baum_1", "altstadt_2", "leuchtturm_1", "regen_1", "dach_1", "bahnsteig_1", "kirsch_1"];
 let crlfVideo = "auto"; // ein Name aus CRLF_VIDEOS oder "auto" (wechselnd)
 
 // Klassen am <html> setzen: crlf-themed (Add-on an), crlf-dark, crlf-bg + crlf-bg-<name> (Hintergrund-Design)

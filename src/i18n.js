@@ -51,7 +51,6 @@ var CRLF_EN = {
   "Dachterrasse": "Rooftop",
   "Bahnsteig": "Train platform",
   "Kirschblüten": "Cherry blossoms",
-  "Schneetempel": "Snowy temple",
   "Wechselnd": "Rotating",
   "alle 60 s": "every 60 s",
   "Motiv wechselt alle 60 Sekunden": "Scene changes every 60 seconds",

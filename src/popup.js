@@ -186,7 +186,7 @@ chrome.storage.onChanged.addListener((c, area) => {
 // ===== Motiv des Designs „Video“ =====
 // Namen wie CRLF_VIDEOS in theme.js; Vorschau sind die Standbilder backgrounds/blur/<name>.jpg; „auto“ = wechselnd
 const VIDEOS = { auto: "Wechselnd", haus_1: "Haus", baum_1: "Baum", altstadt_2: "Altstadt",
-  leuchtturm_1: "Leuchtturm", regen_1: "Regenfenster", dach_1: "Dachterrasse", bahnsteig_1: "Bahnsteig", kirsch_1: "Kirschblüten", tempel_1: "Schneetempel" };
+  leuchtturm_1: "Leuchtturm", regen_1: "Regenfenster", dach_1: "Dachterrasse", bahnsteig_1: "Bahnsteig", kirsch_1: "Kirschblüten" };
 function syncVideo() {
   const row = $("videoRow");
   row.hidden = !radio("design", "video").checked;
