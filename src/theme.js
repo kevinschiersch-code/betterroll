@@ -150,15 +150,20 @@ function crlfClassify(el) {
   return add;
 }
 
-// Teilbäume einordnen (ein Element oder eine Liste): erst alle Farben lesen, dann alle Klassen setzen
-function crlfClassifyTree(roots) {
+// Teilbäume einordnen (ein Element oder eine Liste): erst alle Farben lesen, dann alle Klassen setzen.
+// original = Farben selbst mit crlfWithOriginalColors lesen, aber nur, wenn es überhaupt etwas Neues gibt (das
+// Umschalten lässt den Browser die ganze Seite neu berechnen)
+function crlfClassifyTree(roots, original = false) {
   const set = new Set();
   for (const root of [].concat(roots)) {
     if (!root || root.nodeType !== 1) continue;
     for (const el of [root, ...root.querySelectorAll("*")]) if (!el.dataset.crlfC && !el.matches(CRLF_SKIP)) set.add(el);
   }
   const els = [...set];
-  const found = els.map(crlfClassify);
+  if (!els.length) return;
+  let found;
+  if (original) crlfWithOriginalColors(() => { found = els.map(crlfClassify); });
+  else found = els.map(crlfClassify);
   els.forEach((el, i) => {
     el.dataset.crlfC = "1";
     if (found[i].length) el.classList.add(...found[i]);
@@ -1203,18 +1208,18 @@ function crlfStart() {
   let changed = new Set();
   let scheduled = false;
   const flush = () => crlfTime("Design: neue Teile einfärben", flushNow);
+  // Vorschau der Seite, die durch die eigene Vorschau-Karte ersetzt und unsichtbar ist: nicht einfärben
+  const visible = (n) => n.isConnected && !n.closest("[data-crlf-hidepop]");
   const flushNow = () => {
     scheduled = false;
-    const nodes = added; added = [];
-    const roots = [...changed]; changed = new Set();
-    crlfWithOriginalColors(() => {
-      // z. B. angeklickter Tag als Reiter: Seite tauscht Klassen, Farben neu erfassen
-      const live = roots.filter((r) => r.isConnected);
-      live.forEach(crlfReset);
-      crlfClassifyTree([...live, ...nodes.filter((n) => n.isConnected)]);
-    });
-    crlfFixContrast([...roots, ...nodes]);
+    // zuerst die Vorschau der Seite suchen: wird sie übernommen (unsichtbar), entfällt ihr Einfärben
     crlfFindPopups();
+    const nodes = added.filter(visible); added = [];
+    const roots = [...changed].filter(visible); changed = new Set();
+    // z. B. angeklickter Tag als Reiter: Seite tauscht Klassen, Farben neu erfassen
+    roots.forEach(crlfReset);
+    crlfClassifyTree([...roots, ...nodes], true);
+    crlfFixContrast([...roots, ...nodes]);
   };
   new MutationObserver((muts) => {
     for (const m of muts) {
