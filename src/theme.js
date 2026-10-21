@@ -679,7 +679,7 @@ function crlfPeekData(pop) {
 function crlfPeekClose() {
   clearInterval(crlfPeekWatch);
   if (crlfPeekRO) { crlfPeekRO.disconnect(); crlfPeekRO = null; }
-  if (crlfPeekEl) crlfPeekEl.remove();
+  if (crlfPeekEl) { crlfPeekRemember(crlfPeekEl); crlfPeekEl.remove(); }
   crlfPeekEl = crlfPeekSrc = null;
   crlfPeekKey = "";
 }
@@ -736,7 +736,7 @@ function crlfPeek(pop) {
 
 // Vorschau-Karte aus den gelesenen Daten d bauen und zeigen (Maus: neben der Karte; Handy: Blatt am unteren Rand)
 function crlfPeekBuild(d, key) {
-  if (crlfPeekEl) crlfPeekEl.remove();
+  if (crlfPeekEl) { crlfPeekRemember(crlfPeekEl); crlfPeekEl.remove(); }
   crlfPeekKey = key;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const panel = el("aside", "crlf-peek");
@@ -942,9 +942,31 @@ function crlfPeekUpgrade(panel, d, card) {
     if (b) b.textContent = epNo;
     crlfPeekEpText(ep.querySelector(".crlf-pk-eptext"), { ...d, epNo });
   }
+  panel._crlfUpgraded = true;
   // weitere Nachlieferungen (Bilder) laufen wie bei einer normalen Vorschau über crlfPeekFill
-  panel._crlfData = { ...d, desc: d.desc || old.desc, progress: d.progress ?? old.progress };
+  panel._crlfData = { ...d, desc: d.desc || old.desc, progress: d.progress ?? old.progress, epNo: d.epNo || old.epNo };
   return true;
+}
+
+// Zwischenspeicher der fertigen Vorschau je Serie (Beschreibung, Knöpfe, aktuelle Folge), bleibt über Neuladen erhalten
+const crlfSid = (u) => ((String(u || "").match(/\/series\/([A-Z0-9]+)/i) || [])[1] || "").toUpperCase();
+const crlfPeekMem = new Map();
+const crlfPeekMemReady = chrome.storage.local.get("crPeek").then(({ crPeek }) => {
+  for (const [k, v] of Object.entries(crPeek || {})) if (!crlfPeekMem.has(k)) crlfPeekMem.set(k, v);
+}).catch(() => {});
+let crlfPeekMemT = 0;
+function crlfPeekRemember(panel) {
+  const d = panel && panel._crlfData, sid = d && crlfSid(d.url || (panel._crlfCard && (panel._crlfCard.querySelector('a[href*="/series/"]') || {}).href));
+  if (!sid || ((panel._crlfEarly || d.fromCard) && !panel._crlfUpgraded)) return; // nur Daten, die die Seite selbst geliefert hat
+  const p = panel.querySelector(".crlf-pk-desc"), img = panel.querySelector(".crlf-pk-thumb img");
+  const entry = { desc: p ? p.textContent : "", buttons: (d.buttons || []).slice(0, 3).map((b) => ({ label: b.label, play: !!b.play })),
+    epNo: d.epNo || "", epTitle: d.epTitle || "", thumb: img && !/^data:/.test(img.getAttribute("src")) ? img.getAttribute("src") : "", at: Date.now() };
+  if (!entry.desc && !entry.buttons.length) return;
+  crlfPeekMem.delete(sid);
+  crlfPeekMem.set(sid, entry);
+  while (crlfPeekMem.size > 300) crlfPeekMem.delete(crlfPeekMem.keys().next().value); // älteste zuerst raus
+  clearTimeout(crlfPeekMemT);
+  crlfPeekMemT = setTimeout(() => chrome.storage.local.set({ crPeek: Object.fromEntries(crlfPeekMem) }).catch(() => {}), 1500);
 }
 
 // Vorschau schon beim Überfahren aus der Karte zeigen, statt auf die (verzögerte) Vorschau der Seite zu warten.
@@ -969,10 +991,17 @@ function crlfPeekEarly(card) {
     if (pr && pr.max > 0 && pr.value > 0) d.progress = Math.min(1, pr.value / pr.max);
     d.early = true;
     d.fromCard = false;
-    // Beschreibung kurz abwarten (meist schon vorgeladen), damit die Vorschau nicht nachträglich wächst
-    if (d.url) d.desc = (await Promise.race([crlfFullDesc(d.url, ""), new Promise((r) => setTimeout(r, 300, null))])) || "";
+    // schon einmal gesehen (auch vor dem Neuladen): Beschreibung, Knöpfe und Folge aus dem Zwischenspeicher, dann sieht
+    // die frühe Vorschau gleich aus wie die fertige; sonst Platzhalter, die Seite liefert nach
+    await crlfPeekMemReady;
+    const mem = crlfPeekMem.get(crlfSid(d.url));
+    if (mem) {
+      d.desc = mem.desc || "";
+      if (mem.buttons && mem.buttons.length) d.buttons = mem.buttons.map((b) => ({ el: null, label: b.label, href: "", play: b.play }));
+      if (mem.epNo && mem.epNo === d.epNo) { d.thumb = d.thumb || mem.thumb || null; d.epTitle = mem.epTitle || ""; }
+    }
     if (crlfHoverCard !== card || !card.isConnected || !crlfWithin(card, 2) || (crlfPeekEl && crlfPeekCard === card)) return;
-    if (!d.desc && d.url) d.fromCard = true; // kommt sie doch noch, wird sie nachgetragen
+    if (!d.desc && d.url) d.fromCard = true; // Beschreibung von der Serienseite oder der Seite nachtragen
     crlfPeekSrc = null;
     crlfLastPeek = { name: d.name, card };
     crlfPeekBuild(d, `early|${d.name}`);

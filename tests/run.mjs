@@ -228,8 +228,9 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const card = crlfHoverCard;
     const pop = document.createElement("div");
     pop.style.cssText = "position:absolute;z-index:50;width:300px";
+    pop.className = "test-pop2";
     pop.innerHTML = `<img src="/slow/poster.png?e${Date.now()}"><h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2>`
-      + `<p>Die Beschreibung kommt erst mit der Einblendung der Seite, ihr Platz ist schon frei.</p><img src="/slow/thumb.png?e${Date.now()}"><span>1</span><span>Erste Folge</span><button>Fortsetzen</button><button>Auf die Playlist</button>`;
+      + `<p>Die Beschreibung kommt erst mit der Einblendung der Seite, ihr Platz ist schon frei.</p><img src="/slow/thumb.png?e${Date.now()}"><span>${(card.textContent.match(/Folge (\d+)/) || [])[1]}</span><span>Erste Folge</span><button>Fortsetzen</button><button>Auf die Playlist</button>`;
     card.append(pop);
     crlfPeek(pop);
     await new Promise((r) => setTimeout(r, 1200));
@@ -239,6 +240,29 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Vorschau öffnet sofort aus der Karte", early1.open && early1.early, JSON.stringify(early1));
   ok("Frühe Vorschau mit Daten der Seite ergänzt ohne Verschieben", early2.same && early2.btn === "Fortsetzen" && early2.thumb
     && samePos2(early1.title, early2.title) && samePos2(early1.ep, early2.ep) && samePos2(early1.desc, early2.desc) && early1.h === early2.h, JSON.stringify({ early1, early2 }));
+  await page.evaluate(() => { crlfPeekClose(); document.querySelector(".test-pop2").remove(); });
+
+  // zweites Überfahren, auch nach dem Neuladen: Beschreibung und Knöpfe sofort aus dem Zwischenspeicher
+  const again = async () => {
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(100);
+    const b = await page.locator(".crlf-item:visible").nth(5).boundingBox();
+    await page.mouse.move(b.x + 5, b.y + 5);
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 3 });
+    await page.waitForTimeout(400);
+    return page.evaluate(() => ({ open: !!crlfPeekEl, btn: crlfPeekEl?.querySelector(".crlf-pk-btn")?.textContent,
+      desc: crlfPeekEl?.querySelector(".crlf-pk-desc")?.textContent || "", ep: crlfPeekEl?.querySelector(".crlf-pk-eptext")?.textContent }));
+  };
+  const hit = await again();
+  await page.evaluate(() => crlfPeekClose());
+  await page.waitForTimeout(1800);
+  await page.reload();
+  await page.waitForTimeout(1500);
+  await page.locator(".crlf-item:visible").nth(5).scrollIntoViewIfNeeded();
+  const hit2 = await again();
+  const cached = (h) => h.open && h.btn === "Fortsetzen" && /ihr Platz ist schon frei/.test(h.desc) && /Erste Folge/.test(h.ep || "");
+  ok("Vorschau: zweites Mal sofort vollständig (Zwischenspeicher)", cached(hit), JSON.stringify(hit));
+  ok("Vorschau: auch nach dem Neuladen vollständig", cached(hit2), JSON.stringify(hit2));
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
