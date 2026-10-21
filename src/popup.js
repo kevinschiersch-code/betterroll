@@ -185,7 +185,8 @@ chrome.storage.onChanged.addListener((c, area) => {
 
 // ===== Motiv des Designs „Video“ =====
 // Namen wie CRLF_VIDEOS in theme.js; Vorschau sind die Standbilder backgrounds/blur/<name>.jpg; „auto“ = wechselnd
-const VIDEOS = { auto: "Wechselnd", haus_1: "Haus 1", haus_2: "Haus 2", baum_1: "Baum 1", baum_2: "Baum 2", altstadt_1: "Altstadt 1", altstadt_2: "Altstadt 2" };
+const VIDEOS = { auto: "Wechselnd", haus_1: "Haus 1", haus_2: "Haus 2", baum_1: "Baum 1", baum_2: "Baum 2", altstadt_1: "Altstadt 1", altstadt_2: "Altstadt 2",
+  leuchtturm_1: "Leuchtturm", regen_1: "Regenfenster", dach_1: "Dachterrasse", bahnsteig_1: "Bahnsteig", kirsch_1: "Kirschblüten", tempel_1: "Schneetempel" };
 function syncVideo() {
   const row = $("videoRow");
   row.hidden = !radio("design", "video").checked;
@@ -204,7 +205,8 @@ function syncVideo() {
       } else {
         pic = document.createElement("img");
         pic.src = `backgrounds/blur/${name}.jpg`; pic.alt = "";
-        l.title = T(label.replace(/ \d$/, "")) + label.slice(-2);
+        const [, word, num = ""] = label.match(/^(.*?)( \d)?$/);
+        l.title = T(word) + num;
       }
       l.append(r, pic);
       r.setAttribute("aria-label", l.title);

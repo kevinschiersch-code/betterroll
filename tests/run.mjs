@@ -446,6 +446,17 @@ server.close();
   for (const f of Object.values(icons[0])) ok(`Update-Symbol: ${f} vorhanden`, fs.existsSync(path.join(SRC, f)));
 }
 
+// ===== 6. Design „Video“: jedes Motiv hat Video, Standbild und Eintrag in der Popup-Auswahl =====
+{
+  const names = JSON.parse(fs.readFileSync(path.join(SRC, "theme.js"), "utf8").match(/const CRLF_VIDEOS = (\[[^\]]*\])/)[1]);
+  const popup = fs.readFileSync(path.join(SRC, "popup.js"), "utf8").match(/const VIDEOS = \{([^}]*)\}/)[1];
+  const listed = [...popup.matchAll(/(\w+):/g)].map((m) => m[1]).filter((n) => n !== "auto");
+  ok("Video: Popup-Auswahl = Motivliste", JSON.stringify(listed) === JSON.stringify(names), `${names.length} Motive`);
+  for (const n of names) ok(`Video: ${n} (webm + Standbild)`,
+    fs.statSync(path.join(SRC, "backgrounds", `${n}.webm`), { throwIfNoEntry: false })?.size > 1e5 &&
+    fs.existsSync(path.join(SRC, "backgrounds", "blur", `${n}.jpg`)));
+}
+
 // ===== Ausgabe =====
 let failed = 0;
 for (const r of results) {
