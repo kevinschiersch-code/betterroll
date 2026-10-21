@@ -107,10 +107,15 @@ function el(tag, cls, text) {
   if (text != null) e.textContent = text;
   return e;
 }
-// Link, der in einem neuen Tab öffnet
+// nur https-Adressen als Link zulassen (Adressen kommen aus AniList, Jikan, ANN oder einer geladenen Sicherung)
+function safeUrl(href) {
+  try { const u = new URL(String(href || "")); return u.protocol === "https:" ? u.href : ""; } catch (e) { return ""; }
+}
+// Link, der in einem neuen Tab öffnet; unsichere Adresse: Text ohne Link
 function link(href, text, cls) {
   const a = el("a", cls, text);
-  a.href = href;
+  const url = safeUrl(href);
+  if (url) a.href = url;
   a.target = "_blank";
   a.rel = "noopener noreferrer";
   return a;

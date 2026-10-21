@@ -157,13 +157,23 @@ function makeBanner(msg) {
   if (!bannerJobs.has(id)) bannerJobs.set(id, loadBanner(msg).finally(() => bannerJobs.delete(id)));
   return bannerJobs.get(id);
 }
+// Freigaben für Bildadressen nur so lange behalten, wie das Laden dauert; das Bild liegt danach fertig in crBanner.
+// Ohne Adresse: alle übrig gebliebenen Freigaben früherer Versionen abgeben (feste Dienste aus dem Manifest bleiben).
+async function dropOrigins(url) {
+  const fixed = new Set(chrome.runtime.getManifest().host_permissions || []);
+  let origins;
+  if (url) { try { origins = [`${new URL(url).origin}/*`]; } catch (e) { return; } }
+  else origins = ((await chrome.permissions.getAll()).origins || []).filter((o) => /^https?:\/\//.test(o));
+  origins = origins.filter((o) => !fixed.has(o));
+  if (origins.length) await chrome.permissions.remove({ origins }).catch(() => {});
+}
 async function loadBanner({ url, dataUrl, name, w, h }) {
   if (url) chrome.storage.local.remove("crBannerPending"); // erledigt, egal wie es ausgeht
   try {
     let blob;
     if (dataUrl) blob = await (await fetch(dataUrl)).blob();
     else {
-      if (!/^https?:\/\//i.test(url || "")) return { error: "Keine gültige Adresse" };
+      if (!/^https:\/\//i.test(url || "")) return { error: "Keine gültige Adresse" };
       const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" });
       if (!res.ok) return { error: `HTTP ${res.status}` };
       blob = await res.blob();
@@ -186,6 +196,8 @@ async function loadBanner({ url, dataUrl, name, w, h }) {
     return { ok: true, w: cw, h: ch, ow, oh };
   } catch (e) {
     return { error: /decode|source image/i.test(e.message || "") ? "Kein Bild" : "keine Verbindung" };
+  } finally {
+    if (url) dropOrigins(url);
   }
 }
 // Firefox schließt das Popup, sobald die Freigabe-Abfrage erscheint: Dann holt der Hintergrund die vorgemerkte Adresse
@@ -201,6 +213,7 @@ chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {
 // (Fehlertexte oben wie „Zeitüberschreitung“ bleiben deutsch; comments.js übersetzt sie bei der Anzeige.)
 // Danach öffnet sich einmal die Willkommensseite (welcome.html) mit einer kurzen Übersicht der Funktionen.
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  dropOrigins(); // seit 1.86.23: Bildfreigaben werden nach dem Laden abgegeben, alte Reste hier entfernen
   // „Fehler melden“ gibt es seit 1.82 nicht mehr: dafür gesammelte Daten löschen
   chrome.storage.local.remove(["crReportDraft", "crReportTimes", "crReportHashes", "crInstallId", "crClosedOverlays", "crOverlaySeen", "crSkipLog", "crPlayerDiag"]).catch(() => {});
   if (reason !== "install") return;

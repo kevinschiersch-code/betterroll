@@ -370,7 +370,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     if (sessionStorage.getItem("init")) return;
     sessionStorage.setItem("init", "1");
     sessionStorage.setItem("st_sync", JSON.stringify({ pageTheme: "light", favTop: false }));
-    sessionStorage.setItem("st_local", JSON.stringify({ marks: { frieren: "fav", "one piece": "dim" }, playerSpeed: 1.25 }));
+    sessionStorage.setItem("st_local", JSON.stringify({ marks: { frieren: "fav", "one piece": "dim" }, playerSpeed: 1.25,
+      alMap: { frieren: { id: 154587, title: "Frieren", url: "https://anilist.co/anime/154587" }, boese: { id: 1, url: "javascript:alert(1)" }, kaputt: { id: "x" } } }));
   });
   await page.addInitScript({ content: STUB });
   await page.goto(BASE + "/src/popup.html");
@@ -385,10 +386,19 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.waitForTimeout(400);
   const back = await page.evaluate(() => [JSON.parse(sessionStorage.getItem("st_sync")), JSON.parse(sessionStorage.getItem("st_local"))]);
   ok("Popup: Sichern mit Rückmeldung", toast);
+  ok("Popup: Laden übernimmt nur sichere Titel-Zuordnungen", back[1].alMap && Object.keys(back[1].alMap).join() === "frieren", JSON.stringify(back[1].alMap));
   ok("Popup: Laden stellt Stand wieder her", back[0].favTop === false && back[0].pageTheme === "light" && back[1].marks.frieren === "fav" && back[1].playerSpeed === 1.25);
   await page.waitForTimeout(1500);
   ok("Popup ohne Skriptfehler", !errors.length, errors.join(" | "));
   await ctx.close();
+}
+
+// ===== 2b. Links aus fremden Daten: nur https =====
+{
+  const code = fs.readFileSync(path.join(ROOT, "src/comments.js"), "utf8").match(/function safeUrl[\s\S]*?\n}/)[0];
+  const safeUrl = new Function(code + "; return safeUrl;")();
+  ok("Links: https bleibt, javascript:/http: fallen weg",
+    safeUrl("https://anilist.co/anime/1") === "https://anilist.co/anime/1" && !safeUrl("javascript:alert(1)") && !safeUrl("http://x.de") && !safeUrl(undefined));
 }
 
 // ===== 3. Auto-Skip: Prüfung nur bei laufendem Video =====

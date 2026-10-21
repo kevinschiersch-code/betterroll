@@ -268,7 +268,7 @@ function setBannerUrl() {
   if (!raw || raw === bannerLast) return;
   let u;
   try { u = new URL(raw); } catch (e) { u = null; }
-  if (!u || !/^https?:$/.test(u.protocol)) return bannerHint(T("Keine gültige Adresse"), true);
+  if (!u || u.protocol !== "https:") return bannerHint(T("Keine gültige Adresse"), true);
   bannerLast = raw;
   const msg = { type: "crlf-banner", url: u.href, ...bannerTarget() };
   chrome.storage.local.set({ crBannerPending: msg }); // falls das Popup bei der Freigabe-Abfrage schließt (Firefox)
@@ -489,7 +489,9 @@ $("bkFile").addEventListener("change", async (e) => {
   const local = {}, src = data.local || {};
   const isMap = (v) => v && typeof v === "object" && !Array.isArray(v);
   if (isMap(src.marks)) local.marks = Object.fromEntries(Object.entries(src.marks).filter(([k, v]) => typeof k === "string" && (v === "fav" || v === "dim")));
-  for (const k of ["alMap", "malMap"]) if (isMap(src[k])) local[k] = src[k];
+  // Titel-Zuordnungen: nur Einträge mit Zahl als ID und https-Adresse (die Adresse wird im 💬-Fenster zum Link)
+  const okEntry = (v) => isMap(v) && Number.isInteger(v.id) && v.id > 0 && (v.url == null || (typeof v.url === "string" && v.url.startsWith("https://")));
+  for (const k of ["alMap", "malMap"]) if (isMap(src[k])) local[k] = Object.fromEntries(Object.entries(src[k]).filter(([, v]) => okEntry(v)));
   if (isMap(src.crBanner) && typeof src.crBanner.src === "string" && src.crBanner.src.startsWith("data:image/")) local.crBanner = src.crBanner;
   if (typeof src.playerSpeed === "number") local.playerSpeed = src.playerSpeed;
   if (typeof src.crRankSort === "string") local.crRankSort = src.crRankSort;
