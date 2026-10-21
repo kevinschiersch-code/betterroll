@@ -419,20 +419,20 @@ server.close();
 
 // ===== 5. Update-Hinweis am Symbol: heller Ring nur bei neuerer Version, Zeitplan nur einmal angelegt =====
 {
-  const handlers = [], icons = [], alarms = {};
+  const handlers = [], icons = [], alarms = {}, store = {};
   let created = 0; const startups = []; let answer = { ok: true, newer: true, latest: "9.9.9" };
   const noop = { addListener() {} };
   const chrome = { runtime: { onMessage: { addListener: (f) => handlers.push(f) }, onInstalled: noop, onStartup: { addListener: (f) => startups.push(f) },
         getURL: (p) => p, lastError: null, sendNativeMessage: (_h, _m, cb) => setTimeout(() => cb(answer), 0) },
       action: { setIcon: (o, cb) => { icons.push(o.path); cb && cb(); }, setTitle() {} },
       alarms: { get: (n, cb) => cb(alarms[n]), create: (n, o) => { created++; alarms[n] = o; }, onAlarm: noop },
-      storage: { onChanged: noop, local: { get: async () => ({}), set: async () => {}, remove: async () => {} }, sync: { get: async () => ({}), set: async () => {} } },
+      storage: { onChanged: noop, local: { get: async () => ({ ...store }), set: async (o) => Object.assign(store, o), remove: async () => {} }, sync: { get: async () => ({}), set: async () => {} } },
       permissions: { onAdded: noop, onRemoved: noop } };
   const bg = fs.readFileSync(path.join(SRC, "background.js"), "utf8");
   const start = () => vm.runInContext(bg, vm.createContext({ console, setTimeout, clearTimeout, AbortController, URL, SyntaxError, fetch: async () => ({ ok: false }), chrome }));
   start();
   start(); // Hintergrund startet neu
-  ok("Update-Symbol: Zeitplan nur einmal angelegt", created === 1 && alarms["crlf-update-check"].periodInMinutes >= 60, `${created}×`);
+  ok("Update-Symbol: Zeitplan nur einmal angelegt", created === 1 && alarms["crlf-update-check"].periodInMinutes === 60, `${created}×`);
   startups.slice(-1)[0]();
   await new Promise((r) => setTimeout(r, 20));
   ok("Update-Symbol: Ring bei neuerer Version", icons.length === 1 && /upd/.test(icons[0][16]), JSON.stringify(icons.at(-1)));
@@ -443,6 +443,16 @@ server.close();
   startups.slice(-1)[0]();
   await new Promise((r) => setTimeout(r, 20));
   ok("Update-Symbol: ohne Helfer unverändert", icons.length === 2);
+  // Kalender geöffnet: prüft, aber höchstens alle 15 Min.
+  let asked = 0; const sn = chrome.runtime.sendNativeMessage;
+  chrome.runtime.sendNativeMessage = (h, m, cb) => { asked++; sn(h, m, cb); };
+  answer = { ok: true, newer: true, latest: "9.9.9" };
+  const ping = () => handlers.slice(-1)[0]({ type: "crlf-update-ping" }, {}, () => {});
+  ping(); await new Promise((r) => setTimeout(r, 20));
+  ok("Update-Symbol: Kalender öffnen gedrosselt (kurz nach letzter Prüfung)", asked === 0, `${asked} Prüfungen`);
+  store.updCheckedAt = Date.now() - 16 * 60 * 1000;
+  ping(); await new Promise((r) => setTimeout(r, 20)); ping(); await new Promise((r) => setTimeout(r, 20));
+  ok("Update-Symbol: Kalender öffnen prüft nach 15 Min.", asked === 1 && /upd/.test(icons.at(-1)[16]), `${asked} Prüfungen`);
   for (const f of Object.values(icons[0])) ok(`Update-Symbol: ${f} vorhanden`, fs.existsSync(path.join(SRC, f)));
 }
 

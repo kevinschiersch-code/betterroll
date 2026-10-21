@@ -1042,3 +1042,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Add-on wird gleich neu geladen: Seite kurz danach auffrischen, damit die neuen Skripte greifen
   if (msg.type === "crlf-reload-soon") { setTimeout(() => location.reload(), 700); sendResponse(true); }
 });
+
+// Kalender offen: Hintergrund darf nach einem Update schauen (Ring am Symbol; drosselt selbst, im Store-Paket ohne Wirkung)
+try { chrome.runtime.sendMessage({ type: "crlf-update-ping" }, () => void chrome.runtime.lastError); } catch (_) {}

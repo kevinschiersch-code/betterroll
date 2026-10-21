@@ -323,26 +323,38 @@ function native(cmd) {
   });
 }
 // Update bereit -> Symbol in der Browser-Leiste dezent mit hellem Ring (kein Blinken, kein Badge-Text).
-// Geprüft wird beim Browserstart, nach Installation/Update und alle 6 Stunden (ein kurzer Aufruf des Helfers,
-// der nur latest.json liest) sowie bei jedem Öffnen des Popups. Nach dem Update lädt sich das Add-on neu,
-// die Prüfung danach findet nichts Neueres mehr und setzt das normale Symbol.
+// Geprüft wird ohne Zutun: beim Browserstart, nach Installation/Update, stündlich und beim Öffnen des Kalenders
+// (höchstens alle 15 Min.), außerdem bei jedem Öffnen des Popups. Jede Prüfung ist ein kurzer Aufruf des Helfers,
+// der nur latest.json liest. Nach dem Update lädt sich das Add-on neu, die Prüfung findet nichts Neueres mehr
+// und setzt das normale Symbol.
 const UPD_ICON = { 16: "icons/icon16-upd.png", 32: "icons/icon32-upd.png", 48: "icons/icon48-upd.png" };
 const STD_ICON = { 16: "icons/icon16.png", 48: "icons/icon48.png", 128: "icons/icon128.png" };
+const UPD_ALARM = "crlf-update-check", UPD_EVERY = 60, UPD_MIN_GAP = 15 * 60 * 1000;
 function markIcon(res) {
   if (!res || !res.ok || !chrome.action) return; // Helfer fehlt oder offline: Symbol so lassen
   const on = !!res.newer;
   chrome.action.setIcon({ path: on ? UPD_ICON : STD_ICON }, () => void chrome.runtime.lastError);
   chrome.action.setTitle({ title: on ? "BetterRoll – Update auf v" + res.latest + " bereit" : "BetterRoll" });
 }
-const updCheck = () => native("check").then((res) => { markIcon(res); return res; });
+const updCheck = () => native("check").then((res) => {
+  markIcon(res);
+  chrome.storage.local.set({ updCheckedAt: Date.now() });
+  return res;
+});
+// selten genug: der Hintergrund startet oft neu, Kalender-Tabs werden oft geöffnet
+async function updCheckSoon() {
+  const { updCheckedAt = 0 } = await chrome.storage.local.get("updCheckedAt");
+  if (Date.now() - updCheckedAt > UPD_MIN_GAP) updCheck();
+}
 if (chrome.alarms) {
-  // nur anlegen, wenn er fehlt: der Hintergrund startet oft neu, das soll den Zeitplan nicht zurücksetzen
-  chrome.alarms.get("crlf-update-check", (a) => { if (!a) chrome.alarms.create("crlf-update-check", { periodInMinutes: 360 }); });
-  chrome.alarms.onAlarm.addListener((a) => { if (a.name === "crlf-update-check") updCheck(); });
+  // nur neu anlegen, wenn er fehlt oder einen anderen Takt hat (sonst setzt jeder Neustart den Zeitplan zurück)
+  chrome.alarms.get(UPD_ALARM, (a) => { if (!a || a.periodInMinutes !== UPD_EVERY) chrome.alarms.create(UPD_ALARM, { delayInMinutes: 1, periodInMinutes: UPD_EVERY }); });
+  chrome.alarms.onAlarm.addListener((a) => { if (a.name === UPD_ALARM) updCheck(); });
 }
 chrome.runtime.onStartup.addListener(() => updCheck());
 chrome.runtime.onInstalled.addListener(() => updCheck());
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "crlf-update-ping") { updCheckSoon(); return; }
   if (!msg || (msg.type !== "crlf-update-check" && msg.type !== "crlf-update-run")) return;
   if (msg.type === "crlf-update-check") { updCheck().then(sendResponse); return true; }
   native("update").then(async (res) => {
