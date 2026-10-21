@@ -265,6 +265,31 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Vorschau: auch nach dem Neuladen vollständig", cached(hit2), JSON.stringify(hit2));
   await page.evaluate(() => crlfPeekClose());
 
+  // Seite liefert keine Beschreibung (nur „Staffel 4“): Ersatz von AniList in den Platzhalter
+  await page.evaluate(() => { window.crlfAniListJob = () => Promise.resolve({ desc: "An English description from AniList that is long enough." }); });
+  const card3 = page.locator(".crlf-item:visible").nth(8);
+  await card3.scrollIntoViewIfNeeded();
+  const b3 = await card3.boundingBox();
+  await page.mouse.move(5, 5);
+  await page.mouse.move(b3.x + 5, b3.y + 5);
+  await page.mouse.move(b3.x + b3.width / 2, b3.y + b3.height / 2, { steps: 3 });
+  await page.waitForTimeout(400);
+  const al = await page.evaluate(async () => {
+    const card = crlfHoverCard;
+    const pop = document.createElement("div");
+    pop.style.cssText = "position:absolute;z-index:50;width:300px";
+    pop.innerHTML = `<h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2><p>Staffel 4</p><button>Fortsetzen</button>`;
+    card.append(pop);
+    const h = crlfPeekEl.offsetHeight;
+    crlfPeek(pop);
+    await new Promise((r) => setTimeout(r, 100));
+    const p = crlfPeekEl.querySelector(".crlf-pk-desc");
+    pop.remove();
+    return { text: p.textContent, ph: p.classList.contains("crlf-pk-ph"), same: h === crlfPeekEl.offsetHeight };
+  });
+  ok("Vorschau: ohne Beschreibung der Seite Ersatz von AniList", /English description/.test(al.text) && /AniList/.test(al.text) && !al.ph && al.same, JSON.stringify(al));
+  await page.evaluate(() => crlfPeekClose());
+
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }

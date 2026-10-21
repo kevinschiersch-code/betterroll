@@ -348,6 +348,7 @@ div.crlf-pk-poster.crlf-pk-ph, .crlf-pk-ep.crlf-pk-ph .crlf-pk-thumb { backgroun
 .crlf-pk-desc { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--crlf-fg, #1d1f26); opacity: 0.82; }
 /* feste Mindesthöhe (6 Zeilen): kommt die Beschreibung später oder ist sie kurz, bleibt die Vorschau gleich groß */
 .crlf-peek .crlf-pk-desc { min-height: 8.7em; }
+.crlf-pk-src { font-size: 10.5px; opacity: 0.7; white-space: nowrap; }
 .crlf-pk-desc.crlf-pk-ph { background: repeating-linear-gradient(to bottom, rgba(128, 128, 128, 0.16) 0 0.9em, transparent 0.9em 1.45em); border-radius: 4px; }
 .crlf-pk-ep { display: flex; gap: 12px; align-items: center; padding-top: 12px; border-top: 1px solid var(--crlf-border, #e4e5ea); }
 .crlf-pk-thumb { position: relative; width: 150px; flex: none; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: rgba(0, 0, 0, 0.25); }

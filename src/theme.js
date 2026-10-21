@@ -363,17 +363,32 @@ async function crlfAniListRating(name, en) {
   if (en && en.toLowerCase() !== name.toLowerCase()) for (const x of await alSearch(en).catch(() => [])) if (!results.some((y) => y.id === x.id)) results.push(x);
   const media = (typeof crlfBestMatch === "function" && crlfBestMatch(name, results, en)) || results[0];
   if (!media) return null;
-  const d = await anilist(`query($id:Int){Media(id:$id){averageScore popularity siteUrl episodes endDate{year month day} rankings{rank type allTime season year} ${CRLF_REL}}}`, { id: media.id });
+  const d = await anilist(`query($id:Int){Media(id:$id){averageScore popularity siteUrl episodes description(asHtml:false) endDate{year month day} rankings{rank type allTime season year} ${CRLF_REL}}}`, { id: media.id });
   const m = d && d.Media;
   if (!m) return null;
   const inSeason = (m.rankings || []).filter((r) => !r.allTime && r.season);
   const rank = inSeason.find((r) => r.type === "RATED") || inSeason.find((r) => r.type === "POPULAR");
   const e = m.endDate || {};
-  return { value: m.averageScore || 0, count: m.popularity || 0, url: m.siteUrl, episodes: m.episodes || 0,
+  return { value: m.averageScore || 0, count: m.popularity || 0, url: m.siteUrl, episodes: m.episodes || 0, desc: crlfCleanDesc(m.description),
     end: e.year && e.month ? Date.UTC(e.year, e.month - 1, e.day || 28) : 0,
     rank: rank ? { n: rank.rank, rated: rank.type === "RATED", season: `${CRLF_SEASONS[rank.season] || ""} ${rank.year || ""}`.trim() } : null,
     next: await crlfNextSeason(m).catch(() => null) };
 }
+// AniList-Beschreibung lesbar machen: ohne HTML-Reste und Quellenangabe, höchstens ~500 Zeichen (am Satzende gekürzt)
+function crlfCleanDesc(t) {
+  if (!t) return "";
+  t = t.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/\((?:Source|Quelle)[^)]*\)/gi, "").replace(/\[Written by[^\]]*\]/gi, "")
+    .replace(/\bNote:.*$/is, "").replace(/\s+/g, " ").trim();
+  if (t.length <= 520) return t;
+  const cut = t.slice(0, 520), end = cut.lastIndexOf(". ");
+  return (end > 200 ? cut.slice(0, end + 1) : cut.replace(/\s\S*$/, "") + " …");
+}
+// AniList-Daten einer Serie (Note, Mitglieder, nächste Staffel, Beschreibung) – einmal je Serie, für Bewertung und Beschreibung
+function crlfAniListJob(name, url) {
+  const en = url && ((url.match(/\/series\/[^/?#]+\/([a-z0-9-]+)/i) || [])[1] || "").replace(/-+/g, " ").trim();
+  return name ? crlfCachedRating("al3", name.toLowerCase(), () => crlfAniListRating(name, en)) : Promise.resolve(null);
+}
+
 // Nächste Staffel: der Fortsetzungs-Kette (SEQUEL, Serie) folgen, bis eine noch nicht gestartete kommt (höchstens 4 Schritte).
 // Ergebnis { y, m, d, season } – so genau, wie AniList es kennt; null, wenn kein Termin bekannt ist.
 async function crlfNextSeason(m) {
@@ -492,8 +507,7 @@ function crlfRatingBox(name, url) {
   };
   render();
   const sid = url && (url.match(/\/series\/([A-Z0-9]+)/i) || [])[1];
-  const en = url && ((url.match(/\/series\/[^/?#]+\/([a-z0-9-]+)/i) || [])[1] || "").replace(/-+/g, " ").trim();
-  const alJob = name ? crlfCachedRating("al2", name.toLowerCase(), () => crlfAniListRating(name, en)) : Promise.resolve(null);
+  const alJob = crlfAniListJob(name, url);
   alJob.then((v) => { r.al = v; render(); });
   // Gültigkeit der Crunchyroll-Sterne hängt an der Season (Folgenzahl/Ende von AniList)
   alJob.catch(() => null).then((al) => sid ? crlfCachedRating("cr", sid, () => crlfCrunchyrollRating(url), crlfCrValid(al)) : null)
@@ -564,25 +578,22 @@ function crlfPlacePeek() {
   p.style.top = `${Math.round(top)}px`;
 }
 
-// Volle Beschreibung: die Vorschau der Seite kürzt sie („…“). Aus der Beschreibung im Kopf der Serienseite; je Serie gemerkt.
-const crlfDescMem = new Map();
-function crlfFullDesc(url, short) {
-  const sid = url && (url.match(/\/series\/([A-Z0-9]+)/i) || [])[1];
-  if (!sid) return Promise.resolve(null);
-  if (!crlfDescMem.has(sid)) crlfDescMem.set(sid, (async () => {
-    try {
-      const html = (await crlfSeriesPage(url)) || "";
-      const m = html.match(/<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]*)"/i) || html.match(/<meta[^>]+content="([^"]*)"[^>]+(?:property="og:description"|name="description")/i);
-      if (m) return new DOMParser().parseFromString(m[1], "text/html").documentElement.textContent.trim(); // HTML-Entitäten auflösen
-    } catch (e) {}
-    setTimeout(() => crlfDescMem.delete(sid), 60000); // nicht geklappt: später erneut versuchen
-    return null;
-  })());
-  return crlfDescMem.get(sid).then((full) => {
-    if (!full) return null;
-    const head = short.replace(/[….]+\s*$/, "").slice(0, 30);
-    return full.length > short.length - 2 && full.startsWith(head) ? full : null;
-  });
+// Ersatz-Beschreibung von AniList (englisch), wenn die Seite keine liefert (ihre Serienseite enthält keine).
+// Füllt den Platzhalter p, sofern er dann noch leer ist.
+function crlfPeekAniDesc(p, d) {
+  if (!p || p.dataset.crlfAl) return;
+  p.dataset.crlfAl = "wait";
+  crlfAniListJob(d.name, d.url).then((al) => {
+    if (!p.isConnected || p.textContent || !al || !al.desc) return;
+    crlfPeekDescText(p, al.desc, true);
+  }).catch(() => {});
+}
+// Beschreibungstext setzen; al = von AniList (kleiner Hinweis dahinter)
+function crlfPeekDescText(p, text, al) {
+  p.textContent = text;
+  p.classList.remove("crlf-pk-ph");
+  p.dataset.crlfAl = al ? "1" : "";
+  if (al) { const s = document.createElement("small"); s.className = "crlf-pk-src"; s.textContent = " " + T("AniList · englisch"); p.append(s); }
 }
 
 // Bildgröße (natürliche Maße bevorzugt) und Adresse, auch bei Lazy-Load (data-src)
@@ -766,24 +777,17 @@ function crlfPeekBuild(d, key) {
     x.addEventListener("click", crlfPeekClose);
     panel.append(x);
   }
-  // Beschreibung noch nicht da: Platzhalter in fester Höhe (die Vorschau behält ihre Größe), Text kommt von der
-  // Serienseite bzw. der Einblendung der Seite (crlfPeekUpgrade)
-  if (!d.desc && d.url && (d.fromCard || d.early)) {
+  // Beschreibung noch nicht da: Platzhalter in fester Höhe (die Vorschau behält ihre Größe). Text kommt mit der
+  // Einblendung der Seite (crlfPeekUpgrade); hat die keine, ersatzweise von AniList
+  if (!d.desc) {
     const p = el("p", "crlf-pk-desc crlf-pk-ph");
     panel.append(p);
-    crlfFullDesc(d.url, "").then((full) => { if (full && p.isConnected && !p.textContent) { p.textContent = full; p.classList.remove("crlf-pk-ph"); } });
-  }
-  if (d.desc) {
-    const p = el("p", "crlf-pk-desc", d.desc);
+    if (!d.early) crlfPeekAniDesc(p, d); // Daten der Seite sind schon da, ohne Beschreibung
+    else setTimeout(() => crlfPeekAniDesc(p, d), 2500); // Seite meldet sich nicht: nicht ewig warten
+  } else {
+    const p = el("p", "crlf-pk-desc");
+    crlfPeekDescText(p, d.desc, d.descAl);
     panel.append(p);
-    // gekürzte Beschreibung: kurz unsichtbar warten, bis die volle da ist, damit die Vorschau nicht nachträglich wächst
-    if (/(…|\.\.\.)\s*$/.test(d.desc)) {
-      panel.style.visibility = "hidden";
-      const show = () => { panel.style.visibility = ""; };
-      const t = setTimeout(show, 400);
-      crlfFullDesc(d.url, d.desc).then((full) => { if (full && p.isConnected) { p.textContent = full; crlfPlacePeek(); } })
-        .finally(() => { clearTimeout(t); show(); });
-    }
   }
   if (d.thumb || waitThumb) {
     const ep = el("div", "crlf-pk-ep");
@@ -924,7 +928,8 @@ function crlfPeekUpgrade(panel, d, card) {
   if (btns && d.buttons.length) btns.replaceWith(crlfPeekButtons(d));
   else if (!btns && d.buttons.length) panel.querySelector(".crlf-pk-info").append(crlfPeekButtons(d));
   const p = panel.querySelector(".crlf-pk-desc");
-  if (p && !p.textContent && d.desc) { p.textContent = d.desc; p.classList.remove("crlf-pk-ph"); }
+  if (p && d.desc && (!p.textContent || p.dataset.crlfAl === "1")) crlfPeekDescText(p, d.desc, false); // Text der Seite vor AniList
+  else if (p && !p.textContent) crlfPeekAniDesc(p, { ...old, ...d, name: old.name, url: old.url || d.url });
   const ep = panel.querySelector(".crlf-pk-ep");
   if (ep) {
     const th = ep.querySelector(".crlf-pk-thumb");
@@ -959,7 +964,8 @@ function crlfPeekRemember(panel) {
   const d = panel && panel._crlfData, sid = d && crlfSid(d.url || (panel._crlfCard && (panel._crlfCard.querySelector('a[href*="/series/"]') || {}).href));
   if (!sid || ((panel._crlfEarly || d.fromCard) && !panel._crlfUpgraded)) return; // nur Daten, die die Seite selbst geliefert hat
   const p = panel.querySelector(".crlf-pk-desc"), img = panel.querySelector(".crlf-pk-thumb img");
-  const entry = { desc: p ? p.textContent : "", buttons: (d.buttons || []).slice(0, 3).map((b) => ({ label: b.label, play: !!b.play })),
+  const al = !!(p && p.dataset.crlfAl === "1");
+  const entry = { desc: p ? (p.firstChild && p.firstChild.nodeType === 3 ? p.firstChild.textContent : p.textContent) : "", al, buttons: (d.buttons || []).slice(0, 3).map((b) => ({ label: b.label, play: !!b.play })),
     epNo: d.epNo || "", epTitle: d.epTitle || "", thumb: img && !/^data:/.test(img.getAttribute("src")) ? img.getAttribute("src") : "", at: Date.now() };
   if (!entry.desc && !entry.buttons.length) return;
   crlfPeekMem.delete(sid);
@@ -997,6 +1003,7 @@ function crlfPeekEarly(card) {
     const mem = crlfPeekMem.get(crlfSid(d.url));
     if (mem) {
       d.desc = mem.desc || "";
+      d.descAl = !!mem.al;
       if (mem.buttons && mem.buttons.length) d.buttons = mem.buttons.map((b) => ({ el: null, label: b.label, href: "", play: b.play }));
       if (mem.epNo && mem.epNo === d.epNo) { d.thumb = d.thumb || mem.thumb || null; d.epTitle = mem.epTitle || ""; }
     }
