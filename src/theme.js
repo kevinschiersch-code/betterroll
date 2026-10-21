@@ -100,6 +100,17 @@ function crlfSeriesPage(url) {
 // eigene Elemente und Bilder nie umfärben
 const CRLF_SKIP = "img, svg, video, picture, iframe, canvas, #crlf-video, #crlf-video *, #crlf-theme-toggle, #crlf-tools, #crlf-tools *, .crlf-actions, .crlf-actions *, .crlf-cpanel, .crlf-cpanel *, .crlf-peek, .crlf-peek *, progress, progress *, .crlf-pbar, .crlf-pbar *";
 
+// eigene Elemente von BetterRoll (Änderungen daran lösen keine Suche/Prüfung aus)
+const CRLF_OWN = ".crlf-cpanel, .crlf-peek, #crlf-video, #crlf-banner, #crlf-tools, #crlf-theme-toggle, .crlf-actions, .crlf-btn, .crlf-alt, .crlf-meta, .crlf-nofav, .crlf-timerow, .crlf-pbar";
+// betrifft die Änderung (MutationRecord) nur eigene Elemente?
+function crlfOwnMutation(m) {
+  const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+  if (el && el.closest(CRLF_OWN)) return true;
+  if (m.type !== "childList") return false;
+  const nodes = [...m.addedNodes, ...m.removedNodes];
+  return nodes.length > 0 && nodes.every((n) => n.nodeType === 1 && n.matches(CRLF_OWN));
+}
+
 // Ein Element einmalig einordnen (data-crlf-c merkt „schon erledigt“):
 // crlf-s1/s2 = helle Fläche, crlf-fg/fg2 = dunkler/mittlerer Text, crlf-bd = heller Rahmen, crlf-sh = Schatten,
 // crlf-gr = heller Verlauf, crlf-pb/pa = helle Fläche in ::before/::after
@@ -885,8 +896,12 @@ function crlfSolidifyPopups(x, y) {
 // Die Vorschau der Seite erscheint NEBEN der Karte, nicht unter dem Mauszeiger: deshalb über ihren Inhalt finden
 // (Knöpfe wie „Fortsetzen“, „Auf die Playlist“, „Ansehen“) und den umschließenden Kasten nehmen.
 const CRLF_POP_RE = /^\s*(fortsetzen|weiterschauen|ansehen|jetzt ansehen|abspielen|auf die playlist|zur playlist|playlist|watchlist|zur watchlist|resume|continue|watch now|play|add to (watch|play)list)\s*$/i;
+let crlfPopRan = 0; // Zeitpunkt der letzten Suche (doppelte Suchen kurz hintereinander sparen)
 function crlfFindPopups() { crlfTime("Vorschau der Seite suchen", crlfFindPopupsNow); }
+// nur suchen, wenn seit since (Zeitpunkt, performance.now) noch keine Suche lief
+function crlfFindPopupsSince(since) { if (crlfPopRan < since) crlfFindPopups(); }
 function crlfFindPopupsNow() {
+  crlfPopRan = performance.now();
   if (!document.documentElement.classList.contains("crlf-themed")) return;
   const vw = innerWidth, vh = innerHeight;
   for (const btn of document.querySelectorAll("button, a, [role=button]")) {
@@ -966,23 +981,27 @@ addEventListener("scroll", crlfPeekScroll, { capture: true, passive: true });
 addEventListener("wheel", () => setTimeout(crlfPeekScroll, 60), { capture: true, passive: true });
 
 // Maus bewegt: kurz danach nach der Vorschau der Seite suchen und sie einfärben
+// (lief inzwischen schon eine Suche, z. B. nach einer Änderung der Seite, entfällt die eigene)
 addEventListener("mousemove", (e) => {
+  const at = performance.now();
   clearTimeout(crlfPopTimer);
-  crlfPopTimer = setTimeout(() => { crlfTime("Vorschau unter der Maus", () => crlfSolidifyPopups(e.clientX, e.clientY)); crlfFindPopups(); }, 120);
+  crlfPopTimer = setTimeout(() => { crlfTime("Vorschau unter der Maus", () => crlfSolidifyPopups(e.clientX, e.clientY)); crlfFindPopupsSince(at + 60); }, 120);
   // die Vorschau erscheint oft erst nach einer Verzögerung: noch zweimal nachsehen
   clearTimeout(crlfPopTimer2);
-  crlfPopTimer2 = setTimeout(crlfFindPopups, 800);
+  crlfPopTimer2 = setTimeout(() => crlfFindPopupsSince(at + 500), 800);
   clearTimeout(crlfPopTimer3);
-  crlfPopTimer3 = setTimeout(crlfFindPopups, 1600);
+  crlfPopTimer3 = setTimeout(() => crlfFindPopupsSince(at + 1300), 1600);
 }, { passive: true });
 let crlfPopTimer2 = 0, crlfPopTimer3 = 0;
 // Seite tauscht den Inhalt der Vorschau aus (anderer Anime): bei jeder Änderung kurz danach erneut anpassen
 let crlfPopMutTimer = 0;
+// Änderungen nur an eigenen Elementen (Knöpfe, Vorschau, Video …) zählen nicht; hat das Einfärben neuer Teile
+// inzwischen ohnehin gesucht, entfällt die Suche
 new MutationObserver((muts) => {
-  const own = (m) => { const el = m.target.nodeType === 1 ? m.target : m.target.parentElement; return el && el.closest(".crlf-cpanel, .crlf-peek, #crlf-video"); };
-  if (muts.every(own)) return;
+  if (muts.every(crlfOwnMutation)) return;
+  const at = performance.now();
   clearTimeout(crlfPopMutTimer);
-  crlfPopMutTimer = setTimeout(crlfFindPopups, 60);
+  crlfPopMutTimer = setTimeout(() => crlfFindPopupsSince(at), 60);
 }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
 // ===== 6. Start, Beobachter und Einstellungen =====

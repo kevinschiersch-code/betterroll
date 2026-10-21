@@ -101,6 +101,10 @@
     }
   }
 
-  new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(() => typeof crlfTime === "function" ? crlfTime("Einblendungen schließen", check) : check(), 60); })
-    .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden", "open"] });
+  // eigene Klassen (crlf-…) und eigene Elemente von BetterRoll lösen keine Prüfung aus
+  const site = (v) => (v || "").split(/\s+/).filter((c) => c && !c.startsWith("crlf-")).sort().join(" ");
+  const own = (m) => m.type === "attributes" ? m.attributeName === "class" && site(m.oldValue) === site(m.target.getAttribute("class"))
+    : typeof crlfOwnMutation === "function" && crlfOwnMutation(m);
+  new MutationObserver((muts) => { if (muts.every(own)) return; clearTimeout(timer); timer = setTimeout(() => typeof crlfTime === "function" ? crlfTime("Einblendungen schließen", check) : check(), 60); })
+    .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden", "open"], attributeOldValue: true });
 })();
