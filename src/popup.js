@@ -84,6 +84,7 @@ chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (s) => {
   $("favTop").checked = s.favTop;
   $("diag").checked = s.diag;
   $("hotkeys").checked = s.hotkeys;
+  if ($("crApi")) $("crApi").checked = s.crApi;
   $("featureComments").checked = s.featureComments;
   $("tidy").checked = s.cleanTitles && s.seasonTag;
   $("autoClose").checked = s.autoClose;
@@ -152,6 +153,7 @@ onSwitch("featureDim", "featureDim");
 onSwitch("favTop", "favTop");
 onSwitch("diag", "diag");
 onSwitch("hotkeys", "hotkeys");
+if ($("crApi")) onSwitch("crApi", "crApi");
 onSwitch("featureComments", "featureComments");
 onSwitch("autoClose", "autoClose");
 onSwitch("speedCtl", "speedCtl");

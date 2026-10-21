@@ -583,6 +583,8 @@ function crlfPlacePeek() {
 function crlfPeekAniDesc(p, d) {
   if (!p || p.dataset.crlfAl) return;
   p.dataset.crlfAl = "wait";
+  const cat = typeof crlfCatDesc === "function" ? crlfCatDesc(crlfSid(d.url)) : "";
+  if (cat) { crlfPeekDescText(p, cat, false); return; }
   crlfAniListJob(d.name, d.url).then((al) => {
     if (!p.isConnected || p.textContent || !al || !al.desc) return;
     crlfPeekDescText(p, al.desc, true);
@@ -735,6 +737,9 @@ function crlfPeek(pop) {
   if ((cs && ps && cs !== ps) || (stale && a && b && !a.startsWith(b) && !b.startsWith(a))) { if (crlfPeekCard !== card) crlfPeekClose(); return true; }
   crlfLastPeek = { name: d.name, card };
   crlfPeekSrc = pop;
+  // Katalog-Beschreibung (private Fassung), wenn die Einblendung keine oder nur eine gekürzte hat
+  const cat = typeof crlfCatDesc === "function" ? crlfCatDesc(crlfSid(d.url) || crlfSid(card && (card.querySelector('a[href*="/series/"]') || {}).href)) : "";
+  if (cat && (!d.desc || /(…|\.\.\.)\s*$/.test(d.desc))) d.desc = cat;
   // nachgeladene Bilder der Seite: noch einmal lesen, sobald sie da sind (Laden löst sonst keine Änderung aus)
   for (const i of d.pending) if (!crlfPkWait.has(i)) { crlfPkWait.add(i); i.addEventListener("load", () => { crlfPkWait.delete(i); if (crlfPeekSrc === pop) crlfPeek(pop); }, { once: true }); }
   const key = [d.name, d.season, d.poster, d.thumb, d.epTitle, d.progress, d.desc.length].join("|");
@@ -1001,9 +1006,11 @@ function crlfPeekEarly(card) {
     // die frühe Vorschau gleich aus wie die fertige; sonst Platzhalter, die Seite liefert nach
     await crlfPeekMemReady;
     const mem = crlfPeekMem.get(crlfSid(d.url));
+    const cat = typeof crlfCatDesc === "function" ? crlfCatDesc(crlfSid(d.url)) : ""; // Katalog (private Fassung)
+    if (cat) d.desc = cat;
     if (mem) {
-      d.desc = mem.desc || "";
-      d.descAl = !!mem.al;
+      if (!cat) d.desc = mem.desc || "";
+      d.descAl = !cat && !!mem.al;
       if (mem.buttons && mem.buttons.length) d.buttons = mem.buttons.map((b) => ({ el: null, label: b.label, href: "", play: b.play }));
       if (mem.epNo && mem.epNo === d.epNo) { d.thumb = d.thumb || mem.thumb || null; d.epTitle = mem.epTitle || ""; }
     }

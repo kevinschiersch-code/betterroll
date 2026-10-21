@@ -29,7 +29,8 @@
       "js": [
         "diag.js",
         "i18n.js",
-        "theme.js"
+        "theme.js",
+        "crcatalog.js"
       ],
       "css": [
         "theme.css"

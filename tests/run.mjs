@@ -59,7 +59,7 @@ function calendarHtml() {
     }
     body += "</ol></section>";
   }
-  const cal = ["diag", "i18n", "theme", "languages", "match", "content", "comments", "rank", "dateformat", "series", "overlay", "speed", "skip"];
+  const cal = ["diag", "i18n", "theme", "crcatalog", "languages", "match", "content", "comments", "rank", "dateformat", "series", "overlay", "speed", "skip"];
   return `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script>`
     + `<link rel="stylesheet" href="/src/theme.css"><link rel="stylesheet" href="/src/content.css"></head><body>${body}`
     + cal.map((f) => `<script src="/src/${f}.js"></script>`).join("") + `</body></html>`;
@@ -288,6 +288,38 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     return { text: p.textContent, ph: p.classList.contains("crlf-pk-ph"), same: h === crlfPeekEl.offsetHeight };
   });
   ok("Vorschau: ohne Beschreibung der Seite Ersatz von AniList", /English description/.test(al.text) && /AniList/.test(al.text) && !al.ph && al.same, JSON.stringify(al));
+  await page.evaluate(() => crlfPeekClose());
+
+  // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
+  const cat = await page.evaluate(async () => {
+    const calls = [], real = window.fetch;
+    window.fetch = async (url, o = {}) => {
+      calls.push({ url: String(url), cred: o.credentials, method: o.method || "GET" });
+      if (/^\/(?:de\/)?$/.test(url)) return new Response(`<script>window.__APP_CONFIG__={cxApiParams:{anonClientId:"anon-id",anonClientSecret:""}}</script>`);
+      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+      if (String(url).startsWith("/content/v2/cms/objects/")) {
+        const ids = String(url).split("/").pop().split("?")[0].split(",");
+        return new Response(JSON.stringify({ data: ids.map((id) => ({ id, type: "series", description: `Deutsche Beschreibung für ${id} aus dem Katalog.` })) }));
+      }
+      return real(url, o);
+    };
+    await chrome.storage.local.remove("crCatPause");
+    await chrome.storage.local.remove("crCatCfg");
+    await crlfCatLoad();
+    window.fetch = real;
+    return { calls, desc: crlfCatDesc("G0X4") };
+  });
+  ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
+    && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
+  const card4 = page.locator(".crlf-item:visible").nth(4);
+  await card4.scrollIntoViewIfNeeded();
+  const b4 = await card4.boundingBox();
+  await page.mouse.move(5, 5);
+  await page.mouse.move(b4.x + 5, b4.y + 5);
+  await page.mouse.move(b4.x + b4.width / 2, b4.y + b4.height / 2, { steps: 3 });
+  await page.waitForTimeout(400);
+  const catPeek = await page.evaluate(() => crlfPeekEl?.querySelector(".crlf-pk-desc")?.textContent || "");
+  ok("Vorschau: Beschreibung sofort aus dem Katalog", /aus dem Katalog/.test(catPeek), catPeek);
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));

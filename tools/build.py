@@ -59,8 +59,17 @@ def store_variant(folder: Path, firefox: bool):
     s = bg.read_text(encoding="utf-8")
     a, b = s.index("// @updater-begin"), s.index("// @updater-end")
     bg.write_text(s[:a] + s[b + len("// @updater-end"):].lstrip("\n"), encoding="utf-8")
+    # Crunchyroll-Katalog (crcatalog.js) nur in der privaten Fassung: Datei, Eintrag und Schalter im Popup entfernen
+    (folder / "crcatalog.js").unlink(missing_ok=True)
+    ph = folder / "popup.html"
+    h = ph.read_text(encoding="utf-8")
+    if "<!-- @crapi-begin -->" in h:
+        a, b = h.index("<!-- @crapi-begin -->"), h.index("<!-- @crapi-end -->") + len("<!-- @crapi-end -->")
+        ph.write_text(h[:a] + h[b:], encoding="utf-8")
     mf = folder / "manifest.json"
     m = json.loads(mf.read_text(encoding="utf-8"))
+    for cs in m.get("content_scripts", []):
+        cs["js"] = [j for j in cs.get("js", []) if j != "crcatalog.js"]
     m["permissions"] = [p for p in m.get("permissions", []) if p not in ("alarms", "nativeMessaging")]
     if firefox:
         m["browser_specific_settings"]["gecko"].pop("update_url", None)
