@@ -325,7 +325,7 @@ function progressBar(release, p, plan) {
   if (bar.style.width !== `${width}px`) bar.style.width = `${width}px`;
   const pct = Math.round(p * 100);
   bar.firstChild.style.width = `${pct}%`;
-  bar.title = T("Fortschritt {0} %", pct);
+  setAttr(bar, "title", T("Fortschritt {0} %", pct));
 }
 
 // ===== 4. Vorschaubilder und Poster =====
@@ -512,12 +512,12 @@ function posterImage(release) {
 // Kartenbild durch das Poster ersetzen (Poster der Seite nur auf gleiche Größe bringen); img aus posterImage
 function showPoster(release, img) {
   if (!img || img.classList.contains("crlf-poster")) return;
-  if (landscapeScore(img) === -1) { img.classList.add("crlf-poster-fit"); return; } // Poster der Seite: gleiche Größe
+  if (landscapeScore(img) === -1) { addCls(img, "crlf-poster-fit"); return; } // Poster der Seite: gleiche Größe
   const src = posterFor(release);
   if (!src) return;
   img.dataset.crlfPosterOrig = img.getAttribute("src") || "";
-  img.classList.add("crlf-poster");
-  if (img.parentElement && img.parentElement !== release) img.parentElement.classList.add("crlf-poster-box");
+  addCls(img, "crlf-poster");
+  if (img.parentElement && img.parentElement !== release) addCls(img.parentElement, "crlf-poster-box");
   img.src = src;
 }
 // Poster wieder durch das Bild der Seite ersetzen
