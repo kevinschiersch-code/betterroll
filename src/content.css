@@ -66,6 +66,8 @@ html:not(.crlf-off) .js-release img.crlf-poster, html:not(.crlf-off) .js-release
   aspect-ratio: 2 / 3 !important; object-fit: cover !important; object-position: center !important; margin: 0 auto !important; border-radius: 8px;
 }
 html:not(.crlf-off) .crlf-poster-box.crlf-poster-box { width: var(--crlf-pw, 100%) !important; max-width: 100% !important; height: auto !important; aspect-ratio: auto !important; padding: 0 !important; margin-left: auto !important; margin-right: auto !important; }
+/* Folgennummer/„Premiere“ der Seite oben links auf dem Folgenbild: beim schmaleren Poster stünde sie daneben (steht ohnehin als „Folge 3“ darüber) */
+html:not(.crlf-off) .episode-info:has(.crlf-poster-box) > .episode-label { display: none !important; }
 html:not(.crlf-off) .crlf-poster-box ~ progress { width: var(--crlf-pw, 100%) !important; max-width: 100% !important; margin-left: auto !important; margin-right: auto !important; }
 
 /* Add-on per Hauptschalter aus */
