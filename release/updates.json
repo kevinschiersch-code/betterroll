@@ -3,9 +3,9 @@
     "betterroll@enigma": {
       "updates": [
         {
-          "version": "1.82.5.1",
-          "update_link": "https://raw.githubusercontent.com/kevinschiersch-code/betterroll/main/release/betterroll-firefox-1.82.5.1.xpi",
-          "update_hash": "sha256:2cb78ee50f318c4fa27e97e70d73e88432cce62cae86aa3bd1d99b9206699a68"
+          "version": "1.86.12",
+          "update_link": "https://raw.githubusercontent.com/kevinschiersch-code/betterroll/main/release/betterroll-firefox-1.86.12.xpi",
+          "update_hash": "sha256:7d2e4e11d9d9a2a5800f03c01ea641ef32c2730ae59f95077b2b6e129f6cd5e3"
         }
       ]
     }
