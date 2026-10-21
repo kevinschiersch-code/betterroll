@@ -131,19 +131,23 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
 
   // Seite zeichnet die Folgen-Zeile neu (wie beim Überfahren): 💬 und gekürzter Text müssen vor dem nächsten Bild zurück sein
   const redraw = await page.evaluate(async () => {
-    const card = [...document.querySelectorAll(".crlf-item")].find((c) => getComputedStyle(c).display !== "none" && c.querySelector(".crlf-epline .crlf-btn-talk"));
+    const card = [...document.querySelectorAll(".crlf-item")].find((c) => getComputedStyle(c).display !== "none" && c.querySelector(".crlf-epline .crlf-btn-talk") && c.querySelector(".crlf-tag"));
     const line = card.querySelector(".crlf-epline");
     const before = line.textContent.includes("Verfügbar");
+    const tag = card.querySelector(".crlf-tag"), talk0 = line.querySelector(".crlf-btn-talk");
+    const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+    const oneRow = !!(tag && line.contains(tag) && line.firstElementChild.contains(tag) && Math.abs(mid(tag) - mid(talk0)) < 4);
     const fresh = document.createElement("div");
     fresh.className = "episode";
     fresh.innerHTML = "<span>Folge 9</span> <span>Verfügbar</span>";
     line.replaceWith(fresh);
     await Promise.resolve(); await Promise.resolve(); // nur Mikroaufgaben, kein neues Bild
     const now = card.querySelector(".crlf-epline");
-    return { before, talk: !!(now && now.querySelector(".crlf-btn-talk")), avail: now ? now.textContent.includes("Verfügbar") : true };
+    return { before, oneRow, tagBack: !!(now && now.querySelector(".crlf-tag")), talk: !!(now && now.querySelector(".crlf-btn-talk")), avail: now ? now.textContent.includes("Verfügbar") : true };
   });
   ok("„Verfügbar“ aus der Folgen-Zeile entfernt", !redraw.before);
-  ok("Neu gezeichnete Folgen-Zeile sofort repariert (kein Flackern)", redraw.talk && !redraw.avail, JSON.stringify(redraw));
+  ok("Sprache, Folge und 💬 in einer Zeile", redraw.oneRow);
+  ok("Neu gezeichnete Folgen-Zeile sofort repariert (kein Flackern)", redraw.talk && redraw.tagBack && !redraw.avail, JSON.stringify(redraw));
 
   // neue Teile der Seite (z. B. Vorschau beim Überfahren) lösen einen Einfärbe-Lauf aus: dabei dürfen auf den
   // Karten keine Übergänge starten (sonst blinken Schatten, 💬 und „Folge 3“ der Nachbarkarten kurz auf)

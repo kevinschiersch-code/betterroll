@@ -215,6 +215,7 @@ function placeTalk(release, bar) {
     if (settings.active) trimAvailable(line);
     if (talk.classList.contains("crlf-talk-float")) talk.classList.remove("crlf-talk-float");
     if (talk.parentElement !== line) line.appendChild(talk);
+    if (release.crlfMeta) placeMeta(release, release.crlfMeta);
   } else if (!talk.classList.contains("crlf-talk-float") || !talk.parentElement) {
     talk.classList.add("crlf-talk-float");
     release.appendChild(talk);
@@ -228,7 +229,7 @@ const availOrig = new Map();
 function trimAvailable(line) {
   const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (n.parentElement && n.parentElement.closest(".crlf-btn")) continue;
+    if (n.parentElement && n.parentElement.closest(".crlf-btn, .crlf-meta")) continue;
     AVAIL_RE.lastIndex = 0;
     if (!AVAIL_RE.test(n.nodeValue)) continue;
     if (!availOrig.has(n)) {
@@ -618,17 +619,28 @@ function versionLabel(lang) {
 }
 
 // Hinweis-Zeile direkt unter dem Titel (Staffel, Sprache, andere Fassung), damit die Kopfzeile frei bleibt
+// Die Zeile sitzt vorn in der Folgen-Zeile („English  Folge 7  💬“), sonst unter dem Titel. Sie wird an der Karte gemerkt,
+// damit sie nach einem Neuzeichnen der Folgen-Zeile durch die Seite sofort wieder eingesetzt werden kann.
 function metaRow(release) {
-  let row = release.querySelector(".crlf-meta");
-  if (row) return row;
+  let row = release.querySelector(".crlf-meta") || release.crlfMeta;
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "crlf-meta";
+  }
+  return placeMeta(release, row) ? (release.crlfMeta = row) : null;
+}
+function placeMeta(release, row) {
+  const line = release.querySelector(".crlf-epline");
+  if (line) {
+    if (row.parentElement !== line) line.prepend(row);
+    return true;
+  }
+  if (release.contains(row)) return true;
   const titleEl = releaseTitleEl(release);
-  if (!titleEl) return null;
-  const block = titleEl.closest("h1, h2, h3, h4, .season-name") || titleEl;
-  if (!release.contains(block)) return null;
-  row = document.createElement("div");
-  row.className = "crlf-meta";
+  const block = titleEl && (titleEl.closest("h1, h2, h3, h4, .season-name") || titleEl);
+  if (!block || !release.contains(block)) return false;
   block.after(row);
-  return row;
+  return true;
 }
 
 // Abzeichen einer Karte: Sprache bzw. „+ andere Fassung“ unter dem Titel, Staffel „ST 1 | T 2“ neben ★/▼
