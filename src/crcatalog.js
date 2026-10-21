@@ -1,4 +1,4 @@
-// Beschreibungen aus dem öffentlichen Crunchyroll-Katalog (Einstellung „crApi“). Nur in der privaten Fassung:
+// Beschreibungen und Sterne aus dem öffentlichen Crunchyroll-Katalog (Einstellung „crApi“). Nur in der privaten Fassung:
 // build.py lässt diese Datei in den Store-Paketen weg.
 // Ohne Anmeldung: ein anonymer Schlüssel (grant_type=client_id), wie ihn die Seite für nicht eingeloggte Besucher
 // nutzt. Keine Cookies, kein Konto, nur Katalogdaten. Alle Serien des Kalenders gebündelt (je Abruf bis 40),
@@ -74,6 +74,51 @@ async function crlfCatFetch(ids) {
   const store = {};
   for (const [k, v] of crlfCat) if (Date.now() - v.t < CRLF_CAT_TTL) store[k] = v;
   await chrome.storage.local.set({ crDesc: store });
+}
+
+// Crunchyroll-Sterne einer Serie über die öffentliche Bewertungs-Schnittstelle, mit demselben anonymen Schlüssel
+// (keine Cookies, kein Konto). Bündeln kennt sie nicht: ein Abruf je Serie, erst beim Überfahren; theme.js merkt das
+// Ergebnis (crRating2). Lehnt CR alle bekannten Wege ab (z. B. nur mit Konto): 1 Tag Pause, Eintrag unter „Letzte
+// Fehler“, dann gilt der alte Weg (Serienseite). Ergebnis { value, count, best, src: "api" } oder null.
+const CRLF_RATE_PATHS = ["/content-reviews/v3/rating/series/", "/content-reviews/v2/rating/series/"], CRLF_RATE_PAUSE = 864e5;
+async function crlfCatRating(sid) {
+  sid = String(sid || "").toUpperCase();
+  if (!crlfCatOn || !/^[A-Z0-9]+$/.test(sid)) return null;
+  const { crRatePause = 0, crRatePath } = await chrome.storage.local.get(["crRatePause", "crRatePath"]);
+  if (Date.now() < crRatePause) return null;
+  const paths = crRatePath ? [crRatePath, ...CRLF_RATE_PATHS.filter((p) => p !== crRatePath)] : CRLF_RATE_PATHS;
+  const fails = [];
+  try {
+    const token = await crlfCatToken();
+    for (const p of paths) {
+      const res = await fetch(p + sid, { credentials: "omit", headers: { Authorization: `Bearer ${token}` } });
+      const r = res.ok ? crlfCatParseRating(await res.json().catch(() => null)) : null;
+      if (r) {
+        if (p !== crRatePath) chrome.storage.local.set({ crRatePath: p });
+        return r.value ? r : null; // noch ohne Bewertungen: kein Fehler, nur kein Wert
+      }
+      if (res.status === 401) crlfCatTok = null; // Schlüssel abgelaufen: beim nächsten Mal neu holen
+      fails.push(`${p.split("/")[2]}: ${res.ok ? "unbekannte Antwort" : "HTTP " + res.status}`);
+    }
+  } catch (e) { fails.push(e.message || String(e)); }
+  chrome.storage.local.set({ crRatePause: Date.now() + CRLF_RATE_PAUSE });
+  if (typeof crlfError === "function") crlfError("Crunchyroll-Bewertung", new Error(fails.join(", ")));
+  return null;
+}
+// Antwort lesen: { average: "4.8", total: 12345 | "12.3K", "5s": { displayed: "10.4", unit: "K" }, … }.
+// null = keine Bewertungsdaten erkannt; value 0 = Serie hat noch keine Bewertungen.
+function crlfCatParseRating(j) {
+  if (j && Array.isArray(j.data) && j.data[0]) j = j.data[0];
+  if (!j || typeof j !== "object" || !("average" in j || "5s" in j)) return null;
+  const num = (x) => {
+    if (typeof x === "number") return x;
+    const m = String(x == null ? "" : x).replace(",", ".").match(/(\d+(?:\.\d+)?)\s*([KkMm])?/);
+    return m ? +m[1] * (m[2] ? (/k/i.test(m[2]) ? 1e3 : 1e6) : 1) : 0;
+  };
+  let sum = 0, n = 0;
+  for (let i = 1; i <= 5; i++) { const s = j[`${i}s`]; if (s) { const c = num(`${s.displayed}${s.unit || ""}`); n += c; sum += c * i; } }
+  const count = num(j.total) || n, value = num(j.average) || (n ? sum / n : 0);
+  return { value: value > 0 && value <= 5 ? Math.round(value * 10) / 10 : 0, count: Math.round(count), best: 5, src: "api" };
 }
 
 // alle Serien im Kalender, deren Beschreibung fehlt oder abgelaufen ist, gebündelt nachladen

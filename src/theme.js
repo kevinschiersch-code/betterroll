@@ -438,7 +438,12 @@ function crlfCachedRating(kind, key, load, valid) {
 
 // Crunchyroll-Sterne einer Serie: aus dem HTML der öffentlichen Serienseite (wie ein normaler Seitenaufruf).
 // Klappt das nicht, hilft series.js: es merkt sich die Bewertung, sobald man die Serienseite einmal öffnet.
+// Private Fassung: zuerst die Bewertungs-Schnittstelle (crcatalog.js, ohne Anmeldung).
 async function crlfCrunchyrollRating(url) {
+  if (typeof crlfCatRating === "function") {
+    const r = await crlfCatRating(crlfSid(url)).catch(() => null);
+    if (r && r.value) return r;
+  }
   try {
     const html = await crlfSeriesPage(url);
     if (html) {
@@ -510,7 +515,12 @@ function crlfRatingBox(name, url) {
   const alJob = crlfAniListJob(name, url);
   alJob.then((v) => { r.al = v; render(); });
   // Gültigkeit der Crunchyroll-Sterne hängt an der Season (Folgenzahl/Ende von AniList)
-  alJob.catch(() => null).then((al) => sid ? crlfCachedRating("cr", sid, () => crlfCrunchyrollRating(url), crlfCrValid(al)) : null)
+  // Mit Bewertungs-Schnittstelle (private Fassung) nicht auf AniList warten; ihre Werte gelten 3 Tage
+  const crJob = typeof crlfCatRating === "function"
+    ? Promise.resolve(crlfCrValid(null))
+    : alJob.catch(() => null).then((al) => crlfCrValid(al));
+  crJob.then((valid) => sid ? crlfCachedRating("cr", sid, () => crlfCrunchyrollRating(url),
+    (hit) => hit.v && hit.v.src === "api" ? Date.now() - hit.t < 3 * 864e5 : valid(hit)) : null)
     .then((v) => { r.cr = v; render(); });
   return box;
 }

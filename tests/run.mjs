@@ -315,6 +315,36 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   });
   ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
     && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
+  // Crunchyroll-Sterne über die Bewertungs-Schnittstelle: ohne Cookies, v3 abgelehnt -> v2, Weg gemerkt, Anzeige
+  const rate = await page.evaluate(async () => {
+    const calls = [], real = window.fetch;
+    window.fetch = async (url, o = {}) => {
+      calls.push({ url: String(url), cred: o.credentials });
+      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+      if (String(url).startsWith("/content-reviews/v3/")) return new Response("", { status: 404 });
+      if (String(url).startsWith("/content-reviews/v2/")) return new Response(JSON.stringify({ "5s": { displayed: "9.8", unit: "K" }, "4s": { displayed: "1.2", unit: "K" }, average: "4.8", total: 11000 }));
+      return real(url, o);
+    };
+    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+    const a = await crlfCatRating("G0X5");
+    const { crRatePath } = await chrome.storage.local.get("crRatePath");
+    const box = crlfRatingBox("Anime 9-9", "/de/series/G9X9/anime-9-9");
+    await new Promise((r) => setTimeout(r, 300));
+    const shown = box.querySelector(".crlf-pop-rrow").textContent;
+    // alles abgelehnt: kein Wert, 1 Tag Pause, danach keine weiteren Abrufe
+    window.fetch = async (url, o = {}) => { calls.push({ url: String(url), cred: o.credentials });
+      return url === "/auth/v1/token" ? new Response(JSON.stringify({ access_token: "tok", expires_in: 300 })) : new Response("", { status: 403 }); };
+    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+    const b = await crlfCatRating("G0X7");
+    const n = calls.length, c = await crlfCatRating("G0X8");
+    const { crRatePause = 0 } = await chrome.storage.local.get("crRatePause");
+    window.fetch = real;
+    return { a, crRatePath, shown, b, c, paused: crRatePause > Date.now(), again: calls.length - n, omit: calls.every((x) => x.cred === "omit") };
+  });
+  ok("Bewertung: Sterne ohne Anmeldung aus dem Katalog", rate.omit && rate.a && rate.a.value === 4.8 && rate.a.count === 11000
+    && rate.crRatePath === "/content-reviews/v2/rating/series/" && /4[,.]8/.test(rate.shown), JSON.stringify(rate));
+  ok("Bewertung: abgelehnt -> Pause, alter Weg", rate.b === null && rate.c === null && rate.paused && rate.again === 0, JSON.stringify(rate));
+
   const card4 = page.locator(".crlf-item:visible").nth(4);
   await card4.scrollIntoViewIfNeeded();
   const b4 = await card4.boundingBox();
