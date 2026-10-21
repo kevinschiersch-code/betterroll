@@ -389,3 +389,6 @@ html[data-crlf-touch] .crlf-pk-btn { min-height: 38px; padding: 8px 14px; font-s
   color: transparent !important; -webkit-text-fill-color: transparent !important; font-size: 15px; letter-spacing: 0.08em; }
 .crlf-pop-rwait b, .crlf-pop-rwait b.crlf-stars { opacity: 0.45; }
 .crlf-pop-rwait small { font-style: italic; }
+
+/* kurz während des Farben-Lesens (crlfWithOriginalColors): keine Übergänge, sonst blinken Karten auf */
+html.crlf-notrans *, html.crlf-notrans *::before, html.crlf-notrans *::after { transition: none !important; }

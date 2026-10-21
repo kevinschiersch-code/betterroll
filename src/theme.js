@@ -101,7 +101,7 @@ function crlfSeriesPage(url) {
 const CRLF_SKIP = "img, svg, video, picture, iframe, canvas, #crlf-video, #crlf-video *, #crlf-theme-toggle, #crlf-tools, #crlf-tools *, .crlf-actions, .crlf-actions *, .crlf-cpanel, .crlf-cpanel *, .crlf-peek, .crlf-peek *, progress, progress *, .crlf-pbar, .crlf-pbar *";
 
 // eigene Elemente von BetterRoll (Änderungen daran lösen keine Suche/Prüfung aus)
-const CRLF_OWN = ".crlf-cpanel, .crlf-peek, #crlf-video, #crlf-banner, #crlf-tools, #crlf-theme-toggle, .crlf-actions, .crlf-btn, .crlf-alt, .crlf-meta, .crlf-nofav, .crlf-timerow, .crlf-pbar";
+const CRLF_OWN = ".crlf-cpanel, .crlf-peek, #crlf-video, #crlf-banner, #crlf-tools, #crlf-theme-toggle, .crlf-actions, .crlf-btn, .crlf-alt, .crlf-meta, .crlf-nofav, .crlf-timerow, .crlf-pbar, .crlf-pop-rating";
 // betrifft die Änderung (MutationRecord) nur eigene Elemente?
 function crlfOwnMutation(m) {
   const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
@@ -215,13 +215,22 @@ function crlfLowContrast(el, fg) {
 // alle Klassen, die die Einordnung vergibt (zum Zurücksetzen)
 const CRLF_CLASSES = ["crlf-s1", "crlf-s2", "crlf-fg", "crlf-fg2", "crlf-bd", "crlf-sh", "crlf-gr", "crlf-hi", "crlf-pb", "crlf-pa"];
 
-// Erfassen anhand der Originalfarben: Dunkelmodus kurz abschalten, erfassen, wieder an (ohne Zwischenbild)
+// Erfassen anhand der Originalfarben: Dunkelmodus kurz abschalten, erfassen, wieder an (ohne Zwischenbild).
+// Das Lesen der Farben lässt den Browser den hellen Zustand berechnen; ohne Sperre starteten dabei Übergänge
+// (Schatten, 💬, „Folge 3“) auf allen Karten, die danach sichtbar zurückblendeten (Flackern beim Überfahren).
+// Daher Übergänge sperren, bis der Browser den dunklen Zustand wieder berechnet hat.
 function crlfWithOriginalColors(fn) {
   const root = document.documentElement;
   const was = ["crlf-dark", "crlf-bg"].filter((c) => root.classList.contains(c));
+  if (!was.length) return fn();
+  root.classList.add("crlf-notrans");
   root.classList.remove(...was);
-  fn();
-  root.classList.add(...was);
+  try { fn(); } finally {
+    root.classList.add(...was);
+    getComputedStyle(root).color; // dunklen Zustand berechnen lassen, solange die Sperre gilt
+    if (document.body) document.body.offsetWidth;
+    root.classList.remove("crlf-notrans");
+  }
 }
 
 // Einordnung eines Teilbaums verwerfen (z. B. wenn die Seite die Klassen eines Elements tauscht)
@@ -1057,6 +1066,8 @@ function crlfStart() {
       if (m.type === "attributes") {
         if (m.target.nodeType === 1 && crlfSiteClassChanged(m)) changed.add(m.target);
       } else {
+        // eigene Teile (Vorschau, Bewertung, Knöpfe) lösen keinen Einfärbe-Lauf aus
+        if (crlfOwnMutation(m)) continue;
         for (const n of m.addedNodes) if (n.nodeType === 1 && !n.dataset.crlfC) added.push(n);
       }
     }

@@ -133,6 +133,27 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("„Verfügbar“ aus der Folgen-Zeile entfernt", !redraw.before);
   ok("Neu gezeichnete Folgen-Zeile sofort repariert (kein Flackern)", redraw.talk && !redraw.avail, JSON.stringify(redraw));
 
+  // neue Teile der Seite (z. B. Vorschau beim Überfahren) lösen einen Einfärbe-Lauf aus: dabei dürfen auf den
+  // Karten keine Übergänge starten (sonst blinken Schatten, 💬 und „Folge 3“ der Nachbarkarten kurz auf)
+  const blink = await page.evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    await new Promise((r) => setTimeout(r, 300));
+    const runs = [];
+    const on = (e) => runs.push(e.propertyName + "@" + e.target.tagName.toLowerCase());
+    document.addEventListener("transitionrun", on, true);
+    const flips = [];
+    const mo = new MutationObserver((ms) => ms.forEach((m) => flips.push(m.oldValue)));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"], attributeOldValue: true });
+    const pop = document.createElement("div");
+    pop.textContent = "Vorschau";
+    document.body.append(pop);
+    for (let i = 0; i < 4; i++) await frame();
+    await new Promise((r) => setTimeout(r, 300));
+    document.removeEventListener("transitionrun", on, true); mo.disconnect(); pop.remove();
+    return { flips: flips.length, runs: runs.length, first: runs.slice(0, 3) };
+  });
+  ok("Einfärben neuer Teile startet keine Übergänge auf den Karten (kein Aufblinken)", blink.flips > 0 && blink.runs === 0, JSON.stringify(blink));
+
   // Tastenkürzel: F im Eingabefeld nicht, sonst „nur Favoriten“
   await page.evaluate(() => { const i = document.createElement("input"); i.id = "q"; document.body.prepend(i); });
   await page.focus("#q"); await page.keyboard.press("f"); await page.waitForTimeout(200);
