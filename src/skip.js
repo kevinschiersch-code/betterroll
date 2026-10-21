@@ -1,0 +1,106 @@
+// skip.js – Intro, Rückblick und Abspann automatisch überspringen (Nutzerwunsch). Läuft wie speed.js in allen Rahmen
+// der Crunchyroll-Seiten (Player-iframe). Nutzt nur den eigenen „… überspringen“-Knopf des Players: Ist er 0,5 s
+// sichtbar, wird er angeklickt. Springt der Player danach nicht, wird bis zu 3-mal neu geklickt. Kein eigenes Spulen
+// (das frühere Warten + 1,5 s Zurück ließ den Player hängen).
+// Zurückgespult in einen schon übersprungenen Abschnitt oder selbst hineingesprungen: dann wird nicht übersprungen
+// (jede Folge merkt sich die Zeitspannen der erledigten Abschnitte).
+// Keine Schnittstelle, kein Netzverkehr. Schalter: Einstellung autoSkip (ab Werk an).
+(() => {
+  const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
+  const VERB = /skip|überspring/i;
+  const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
+  let on = true, timer = 0;
+  // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
+  let state = new WeakMap();
+  let seen = [], episode = "", lastUserSeek = 0, ownUntil = 0, lastClick = 0; // erledigte Abschnitte { start, end } dieser Folge
+  const hooked = new WeakSet();
+  const handled = (t) => seen.some((x) => t >= x.start - 3 && t <= x.end + 3);
+
+  // Schalter lesen (Hauptschalter und autoSkip)
+  const load = () => chrome.storage.sync.get({ active: true, autoSkip: true }, (s) => { on = s.active && s.autoSkip; arm(); });
+  load();
+  chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && (c.active || c.autoSkip)) load(); });
+
+  // Prüfung alle 0,25 s, aber nur solange in diesem Rahmen ein Video läuft (der Knopf erscheint oft nur per Klassenwechsel).
+  // Ohne laufendes Video (Kalender, Serienseiten, Pause) schläft die Prüfung; Start/Pause des Videos weckt sie.
+  const own = (v) => v.closest(".crlf-video-layer, #crlf-video"); // eigenes Hintergrundvideo im Kalender
+  const playing = () => [...document.querySelectorAll("video")].find((v) => !own(v) && !v.paused && !v.ended);
+  function arm() {
+    const run = on && !!playing();
+    if (run && !timer) timer = setInterval(check, 250);
+    else if (!run && timer) { clearInterval(timer); timer = 0; }
+  }
+  // Medien-Ereignisse steigen nicht auf, kommen aber in der Einfangphase am Dokument an
+  for (const type of ["playing", "pause", "ended", "emptied"]) {
+    document.addEventListener(type, (e) => { if (e.target instanceof HTMLVideoElement && !own(e.target)) arm(); }, true);
+  }
+
+  // Beschriftung eines Knopfs (aria-label, title, Text)
+  const label = (el) => [el.getAttribute("aria-label"), el.getAttribute("title"), el.textContent].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  // sichtbar und groß genug?
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 20 || r.height < 12) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== "hidden" && cs.display !== "none" && +cs.opacity > 0.05;
+  };
+
+  function check() {
+    const video = playing();
+    if (!video) return arm(); // Video weg oder angehalten: schlafen bis zum nächsten Start
+    watch(video);
+    const now = Date.now(), t = video.currentTime;
+    const list = document.querySelectorAll('[data-testid*="skip" i], button, [role="button"]');
+    for (let el of list) {
+      if (el.closest("[data-crlf-speed]")) continue;
+      const text = label(el);
+      if (text.length > 60) continue; // ganze Leisten/Menüs, nicht ein Knopf
+      const testid = (el.getAttribute("data-testid") || "").toLowerCase();
+      if (!(testid.includes("skip") || (VERB.test(text) && WHAT.test(text)))) continue;
+      el = target(el); // Hülle mit innerem Knopf: den Knopf nehmen (sonst kommt der Klick nicht an)
+      if (!visible(el)) { state.delete(el); continue; }
+      let s = state.get(el);
+      if (!s) {
+        // selbst hineingesprungen (Knopf kam direkt nach eigenem Spulen) oder zurückgespult in Erledigtes: stehen lassen
+        s = { since: now, tries: 0, clickedAt: 0, off: now - lastUserSeek < 2500 || handled(t) };
+        state.set(el, s);
+      }
+      if (s.off || s.tries >= TRIES) continue;
+      if (s.clickedAt && now - s.clickedAt < CHECK_MS) continue; // warten, ob der Player springt
+      if (now - s.since < STABLE_MS) continue; // erst klicken, wenn der Knopf bereit ist
+      if (now - lastClick < CHECK_MS) return; // nie zwei Klicks kurz hintereinander (Knopf und innerer Knopf)
+      lastClick = now;
+      s.tries++; s.clickedAt = now;
+      const from = t;
+      ownUntil = now + 4000; // der Sprung des Players zählt nicht als eigenes Spulen
+      video.addEventListener("seeked", () => {
+        if (Date.now() - now > 4000) return;
+        s.off = true; // gesprungen: erledigt
+        if (video.currentTime > from) seen.push({ start: from - 1, end: video.currentTime });
+      }, { once: true });
+      press(el);
+      return;
+    }
+  }
+
+  // eigenes Spulen bemerken (nur während das Video schon läuft); neue Folge = Liste leeren
+  function watch(video) {
+    const key = location.href + "|" + (video.currentSrc || "");
+    if (key !== episode) { episode = key; seen = []; state = new WeakMap(); }
+    if (hooked.has(video)) return;
+    hooked.add(video);
+    video.addEventListener("seeking", () => { if (Date.now() > ownUntil && !video.paused && video.played.length) lastUserSeek = Date.now(); });
+  }
+
+  // eigentlicher Knopf zum Treffer: umgebender Knopf, sonst ein Knopf darin, sonst der Treffer selbst
+  const target = (el) => el.closest("button, [role=button], a") || el.querySelector("button, [role=button]") || el;
+
+  // Klick auslösen. Der Treffer kann ein SVG o. Ä. ohne .click() sein (data-testid am Symbol): dann den umgebenden
+  // Knopf nehmen bzw. die Mausereignisse selbst schicken, wie ein echter Klick sie liefert
+  function press(el) {
+    const btn = target(el);
+    if (typeof btn.click === "function") { btn.click(); return; }
+    const r = btn.getBoundingClientRect(), at = { bubbles: true, cancelable: true, composed: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+    for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) btn.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, at));
+  }
+})();

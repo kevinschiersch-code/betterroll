@@ -1,0 +1,234 @@
+/* content.css – Elemente, die content.js und comments.js in die Kalenderkarten setzen: Knöpfe ★/▼/💬, Abzeichen,
+   Folgen-Zeile, Fortschrittsbalken, Ausgrauen und das Kommentar-Panel. Farben kommen aus theme.css (CSS-Variablen),
+   die Werte hinter dem Komma gelten, falls das Design aus ist. */
+
+/* ===== Filter ===== */
+.crlf-hidden { display: none !important; }
+html .crlf-top-hidden { display: none !important; }
+
+/* ===== Knopfleiste ★/▼ und Abzeichen ===== */
+.crlf-actions { display: flex; align-items: center; gap: 3px; z-index: 5; }
+.crlf-actions .crlf-season { margin-right: 2px; flex: none; }
+/* neben der Uhrzeit: schwebt rechts in derselben Zeile, kann sie nie überdecken */
+.crlf-timerow { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+.crlf-timerow > time, .crlf-timerow > .available-time { flex: 0 0 auto; white-space: nowrap; }
+.crlf-actions.crlf-inline { float: none; margin: 0; flex: 0 1 auto; min-width: 0; }
+/* Lesezeichen-Symbol der Seite: fest rechts am Titel statt schwebend, Titel bekommt dafür einen Rand */
+.crlf-has-icon { position: relative !important; padding-right: 22px !important; }
+.crlf-inline-icon { float: none !important; position: absolute !important; right: 0; top: 2px; margin: 0 !important; }
+article.release, .js-release { position: relative; }
+.crlf-btn {
+  width: 19px; height: 19px; padding: 0; border-radius: 50%; cursor: pointer; flex: none;
+  border: 1px solid #c9cbd1; background: rgba(255, 255, 255, 0.92); color: #8a8d96;
+  font: 9.5px/17px system-ui, sans-serif; text-align: center; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.crlf-btn[hidden] { display: none; }
+.crlf-btn:hover { border-color: var(--crlf-accent, #f47521); color: var(--crlf-accent, #f47521); }
+.crlf-meta { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 4px; }
+.crlf-meta:empty { display: none; }
+.crlf-alt {
+  display: inline-block; height: 18px; padding: 0 7px; border-radius: 9px;
+  font: 600 10.5px/16px system-ui, sans-serif; white-space: nowrap; text-decoration: none !important;
+  background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.14); color: var(--crlf-time, #e0620c) !important; border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.45);
+}
+.crlf-alt:hover { background: var(--crlf-accent, #f47521); color: #fff !important; }
+/* Staffel-Abzeichen: dezent, neutral, Zahl betont */
+.crlf-season, .crlf-season:hover {
+  cursor: default; display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; height: 17px; line-height: 15px; font-size: 10px;
+  background: rgba(35, 37, 43, 0.06); color: #4a4d58 !important; border-color: rgba(35, 37, 43, 0.18);
+  font-weight: 700;
+}
+.crlf-season small { font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em; opacity: 0.6; }
+.crlf-season .crlf-sep { width: 1px; height: 9px; margin: 0 2px; background: currentColor; opacity: 0.3; }
+.crlf-tag, .crlf-tag:hover { cursor: default; background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.14); color: var(--crlf-time, #e0620c) !important; }
+.crlf-btn-fav.crlf-on { background: var(--crlf-accent, #f47521); border-color: var(--crlf-accent, #f47521); color: #fff; }
+.crlf-btn-dim.crlf-on { background: #6b6e78; border-color: #6b6e78; color: #fff; }
+
+/* ===== Markierungen ===== */
+/* Hervorgehoben (ohne Design; mit Design gilt theme.css) */
+.crlf-fav article.release, article.crlf-fav, .crlf-fav.js-release {
+  outline: 2px solid var(--crlf-accent, #f47521); outline-offset: -2px; background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.08);
+}
+
+/* Ausgegraut: halbe Größe, blass, ganz unten */
+.crlf-dim { zoom: 0.5; width: 50% !important; opacity: 0.45; filter: grayscale(1); }
+.crlf-dim:hover { opacity: 0.8; }
+.crlf-dim .crlf-actions { zoom: 2; position: static; float: none; justify-content: flex-end; margin: 0 0 2px; }
+
+/* eingeblendetes Vorschaubild (showThumbnail) */
+.crlf-show { display: block !important; visibility: visible !important; opacity: 1 !important; max-height: none !important; }
+img.crlf-show { width: 100% !important; height: auto !important; }
+/* Titelbild (Poster) statt Folgenbild: überall gleich groß – feste Breite (schmalste Karte, --crlf-pw), Hochformat 2:3,
+   zugeschnitten statt verzerrt; Hülle passt sich an, Balken genauso breit */
+html:not(.crlf-off) article.release img.crlf-poster, html:not(.crlf-off) article.release img.crlf-poster-fit,
+html:not(.crlf-off) .js-release img.crlf-poster, html:not(.crlf-off) .js-release img.crlf-poster-fit {
+  display: block !important; width: var(--crlf-pw, 100%) !important; max-width: 100% !important; height: auto !important; max-height: none !important;
+  aspect-ratio: 2 / 3 !important; object-fit: cover !important; object-position: center !important; margin: 0 auto !important; border-radius: 8px;
+}
+html:not(.crlf-off) .crlf-poster-box.crlf-poster-box { width: var(--crlf-pw, 100%) !important; max-width: 100% !important; height: auto !important; aspect-ratio: auto !important; padding: 0 !important; margin-left: auto !important; margin-right: auto !important; }
+html:not(.crlf-off) .crlf-poster-box ~ progress { width: var(--crlf-pw, 100%) !important; max-width: 100% !important; margin-left: auto !important; margin-right: auto !important; }
+
+/* Add-on per Hauptschalter aus */
+html.crlf-off .crlf-actions { display: none !important; }
+
+/* ===== Kommentar-Panel (AniList / MyAnimeList), Farben folgen dem gewählten Design ===== */
+.crlf-btn-talk { font-size: 10px !important; }
+.crlf-cpanel { overscroll-behavior: contain;
+  position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(380px, calc(100vw - 24px)); z-index: 2147483600;
+  display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
+  font: 13px/1.45 system-ui, "Segoe UI", sans-serif; color: var(--crlf-fg, #1d1f26);
+  background: color-mix(in srgb, var(--crlf-surface, #fff) 92%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--crlf-border, #e4e5ea);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.18);
+  animation: crlfSlide 0.18s ease-out;
+}
+@keyframes crlfSlide { from { transform: translateX(16px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .crlf-cpanel { animation: none; } }
+.crlf-chead { display: flex; align-items: flex-start; gap: 8px; padding: 14px 14px 10px; border-bottom: 1px solid var(--crlf-border, #e4e5ea);
+  background: linear-gradient(135deg, rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.18), transparent 70%); }
+.crlf-ctitle { flex: 1; min-width: 0; }
+.crlf-ctitle strong { display: block; font-size: 15px; line-height: 1.25; }
+.crlf-ctitle small { color: var(--crlf-time, #e0620c); font-weight: 700; font-size: 11.5px; }
+.crlf-cclose { flex: none; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--crlf-border, #ddd); background: transparent; color: inherit; cursor: pointer; }
+.crlf-cclose:hover { border-color: var(--crlf-accent, #f47521); color: var(--crlf-accent, #f47521); }
+.crlf-cbody { overscroll-behavior: contain; flex: 1; overflow: auto; padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.crlf-cmuted { margin: 0; color: var(--crlf-muted, #6b6f7d); }
+.crlf-cmatch { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--crlf-muted, #6b6f7d); }
+.crlf-cmatch select { flex: 1; min-width: 0; font: inherit; color: var(--crlf-fg, #1d1f26); background: var(--crlf-bg, #f3f3f6); border: 1px solid var(--crlf-border, #ddd); border-radius: 8px; padding: 4px 6px; }
+.crlf-ccontent { display: flex; flex-direction: column; gap: 6px; }
+.crlf-cthread { display: block; padding: 8px 10px; border-radius: 10px; text-decoration: none !important; color: inherit !important;
+  background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.06); border: 1px solid var(--crlf-border, #e4e5ea); }
+.crlf-cthread:hover { border-color: var(--crlf-accent, #f47521); }
+.crlf-cthread.crlf-cmain { background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.14); border-color: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.5); }
+.crlf-cthread b { display: block; font-size: 12.5px; }
+.crlf-cthread small { color: var(--crlf-muted, #6b6f7d); font-size: 11px; }
+.crlf-cposts { display: flex; flex-direction: column; gap: 6px; }
+.crlf-cpost { padding: 8px 10px; border-radius: 10px; background: var(--crlf-bg, #f3f3f6); }
+.crlf-cwho { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.crlf-cep { flex: none; font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 6px; border-radius: 999px; margin-right: 6px; vertical-align: 1px;
+  color: var(--crlf-time, #e0620c); background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.14); border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); }
+.crlf-cwho .crlf-cep { margin-right: 0; }
+.crlf-cnote { margin: 0; padding: 7px 10px; border-radius: 10px; font-weight: 700; font-size: 12px; color: var(--crlf-time, #e0620c);
+  background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.1); border: 1px dashed rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.45); }
+.crlf-cnews { display: flex; flex-direction: column; gap: 6px; }
+.crlf-cnews:not([open]) { gap: 0; }
+.crlf-cnews > summary { cursor: pointer; list-style: none; padding: 7px 10px; border-radius: 10px; font-weight: 700; font-size: 12px;
+  background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.1); border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); }
+.crlf-cnews > summary::-webkit-details-marker { display: none; }
+.crlf-cnews > summary::after { content: "▾"; float: right; transition: transform .15s; }
+.crlf-cnews[open] > summary::after { transform: rotate(180deg); }
+.crlf-cnews > small { font-size: 11px; }
+.crlf-cnews > small a { color: inherit; }
+.crlf-cmeta { display: flex; justify-content: space-between; font-size: 11px; color: var(--crlf-muted, #6b6f7d); margin-bottom: 2px; }
+.crlf-cmeta b { color: var(--crlf-time, #e0620c); }
+.crlf-cpost p { margin: 0; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.crlf-cfoot { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 6px; flex: none; }
+.crlf-cmore { display: flex; justify-content: center; gap: 14px; }
+.crlf-cerr { margin: 0; font-size: 11.5px; color: var(--crlf-muted, #6b6f7d); opacity: 0.8; }
+.crlf-csum { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.10); border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); }
+.crlf-cscore { font-size: 26px; font-weight: 800; color: var(--crlf-time, #e0620c); min-width: 64px; text-align: center; }
+.crlf-csum b, .crlf-csum small { display: block; }
+.crlf-csum small { color: var(--crlf-muted, #6b6f7d); font-size: 11px; }
+.crlf-cbtn { display: block; flex: none; text-align: center; padding: 8px 10px; border-radius: 10px; font-weight: 700; text-decoration: none !important;
+  background: linear-gradient(135deg, var(--crlf-accent-2, #ff9d57), var(--crlf-accent, #f47521)); color: var(--crlf-on-accent, #1a0d04) !important; }
+.crlf-clink { color: var(--crlf-muted, #6b6f7d) !important; font-size: 12px; }
+body:has(.crlf-cpanel) #crlf-theme-toggle { display: none !important; }
+
+/* ===== Folgen-Zeile mit 💬 ===== */
+/* 💬 rechts am Ende der Folgen-Zeile („Folge 134  💬“), mittig zur Schrift; die Zeile bricht nie um und
+   beeinflusst die Spaltenbreite nicht (contain) */
+html:not(.crlf-off) .crlf-epline { display: flex !important; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; min-height: 22px; min-width: 0; contain: inline-size; }
+html:not(.crlf-off) .crlf-epline > :not(.crlf-btn-talk) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.crlf-epline > .crlf-btn-talk { margin-left: auto !important; flex: none; align-self: center; opacity: 0.8; transition: opacity 0.15s, transform 0.15s; }
+article.release:hover .crlf-epline > .crlf-btn-talk, .js-release:hover .crlf-epline > .crlf-btn-talk, .crlf-epline > .crlf-btn-talk:focus-visible { opacity: 1; }
+.crlf-epline > .crlf-btn-talk:hover { transform: scale(1.08); }
+/* Ersatz, falls die Karte keine Folgen-Zeile hat: unten rechts */
+.crlf-talk-float { position: absolute !important; right: 8px; bottom: 8px; z-index: 4; opacity: 0.55; transition: opacity 0.15s; }
+article.release:hover .crlf-talk-float, .js-release:hover .crlf-talk-float, .crlf-talk-float:focus-visible { opacity: 1; }
+html.crlf-off .crlf-btn-talk, .crlf-dim .crlf-btn-talk { display: none !important; }
+
+/* ===== Bilder und Fortschritt ===== */
+/* Vorschaubilder „Keine“: auch die Bilder der Seite auf den Karten ausblenden */
+.crlf-noimg article.release img, .crlf-noimg .js-release img, article.release.crlf-noimg img, .js-release.crlf-noimg img,
+.crlf-noimg article.release picture, .crlf-noimg .js-release picture { display: none !important; }
+
+/* gesehene aktuelle Folge (nur mit Crunchyroll-Anmeldung): leicht ausgegraut, beim Überfahren wieder voll da */
+html:not(.crlf-off) .crlf-watched:not(.crlf-dim) { opacity: 0.55; filter: saturate(0.35); transition: opacity 0.15s, filter 0.15s; }
+html:not(.crlf-off) .crlf-watched:not(.crlf-dim):hover, html:not(.crlf-off) .crlf-watched:not(.crlf-dim):has(:focus-visible) { opacity: 1; filter: none; }
+
+/* eigener Fortschrittsbalken unter dem Kartenbild (Crunchyroll-Orange); nur wo die Seite keinen eigenen Balken hat */
+.crlf-pbar { display: block; max-width: 100%; height: 4px; margin: 6px auto 2px; border: 0 !important; border-radius: 2px; overflow: hidden; background: rgba(128, 128, 128, 0.35) !important; }
+.crlf-pbar > i { display: block; height: 100%; border-radius: 2px; background: #f47521 !important; }
+/* Balken der Seite (natives <progress>): gleiche Optik – dunkle Spur, orange Füllung, kein weißer Rand */
+html:not(.crlf-off) .js-release progress, html:not(.crlf-off) article.release progress {
+  -webkit-appearance: none; appearance: none; display: block; height: 4px; border: 0 !important; outline: 0 !important;
+  box-shadow: none !important; border-radius: 2px; overflow: hidden; background: rgba(128, 128, 128, 0.35) !important; color: #f47521;
+}
+html:not(.crlf-off) .js-release progress::-webkit-progress-bar, html:not(.crlf-off) article.release progress::-webkit-progress-bar { background: rgba(128, 128, 128, 0.35); border-radius: 2px; }
+html:not(.crlf-off) .js-release progress::-webkit-progress-value, html:not(.crlf-off) article.release progress::-webkit-progress-value { background: #f47521; border-radius: 2px; }
+html:not(.crlf-off) .js-release progress::-moz-progress-bar, html:not(.crlf-off) article.release progress::-moz-progress-bar { background: #f47521; border-radius: 2px; } /* Firefox */
+html.crlf-off .crlf-pbar { display: none !important; }
+
+/* ===== Handy-Modus (Firefox für Android, data-crlf-touch setzt theme.js) ===== */
+/* Knöpfe groß genug für Finger; langes Tippen auf Karten öffnet die Vorschau statt Text zu markieren */
+html[data-crlf-touch] .crlf-btn { width: 30px; height: 30px; font-size: 14px; line-height: 28px; }
+html[data-crlf-touch] .crlf-btn-talk { font-size: 14px !important; }
+html[data-crlf-touch] article.release, html[data-crlf-touch] .js-release { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+/* Handy: Kommentarfenster ohne Einflug-Animation (Lage setzt crlfFitSheet) */
+html[data-crlf-touch] .crlf-cpanel { animation: none; }
+/* schmaler Bildschirm: Kommentarfenster als Blatt von unten über die ganze Breite */
+@media (max-width: 600px) {
+  .crlf-cpanel { top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 85vh; border-radius: 16px 16px 0 0; }
+  .crlf-cthread, .crlf-cnews > summary { padding: 10px 12px; }
+}
+
+/* Knöpfe „Nur Favoriten“ (★) und „Heute“ über dem ☀/☾-Knopf unten rechts */
+#crlf-tools { position: fixed; right: 24px; bottom: 76px; z-index: 2147483646; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#crlf-tools[hidden], html.crlf-off #crlf-tools, body:has(.crlf-cpanel) #crlf-tools { display: none !important; }
+.crlf-tool { all: unset; box-sizing: border-box; cursor: pointer; min-width: 38px; height: 38px; padding: 0 10px; border-radius: 19px;
+  display: flex; align-items: center; justify-content: center; font: 700 13px/1 system-ui, "Segoe UI", sans-serif;
+  color: var(--crlf-fg, #fff); background: rgba(24, 25, 32, 0.82); border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); backdrop-filter: blur(6px); transition: transform .15s ease, border-color .15s ease; }
+.crlf-tool[hidden] { display: none; }
+.crlf-tool:hover, .crlf-tool:focus-visible { transform: translateY(-2px); border-color: var(--crlf-accent, #f47521); }
+.crlf-tool-fav { font-size: 17px; color: #c9cbd3; }
+.crlf-tool-rank { color: #c9cbd3; }
+.crlf-tool-rank svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.crlf-tool-fav.crlf-on { background: var(--crlf-accent, #f47521); border-color: var(--crlf-accent, #f47521); color: var(--crlf-on-accent, #1a0d04); }
+html:not(.crlf-dark) .crlf-tool { background: #23252b; color: #fff; }
+/* nur Favoriten: alle anderen Karten weg */
+html.crlf-onlyfav .crlf-item:not(.crlf-fav) { display: none !important; }
+/* nur Favoriten: Tag ohne Favoriten behält seine Breite und zeigt einen Hinweis */
+.crlf-nofav { box-sizing: border-box; width: 100%; min-width: min(var(--crlf-dayw, 150px), calc(100vw / 7 - 16px)); margin: 8px 0;
+  padding: 18px 10px; border: 1px dashed rgba(128, 128, 128, 0.45); border-radius: 10px; text-align: center;
+  font: 600 12px/1.4 system-ui, "Segoe UI", sans-serif; color: var(--crlf-fg, inherit); opacity: 0.6; }
+html:not(.crlf-onlyfav) .crlf-nofav, html.crlf-off .crlf-nofav { display: none !important; }
+/* Spalte von heute: Kopf in Akzentfarbe, kurzes Aufleuchten nach „Heute“ */
+html:not(.crlf-off) .crlf-today .crlf-dayhead { box-shadow: inset 0 -3px 0 var(--crlf-accent, #f47521); }
+html:not(.crlf-off) .crlf-today.crlf-flash { animation: crlf-flash 1.2s ease; }
+@keyframes crlf-flash { 0%, 100% { outline: 2px solid transparent; } 30% { outline: 2px solid var(--crlf-accent, #f47521); outline-offset: 4px; } }
+
+/* ===== Top 10 der Season (rank.js, im Panel der Kommentare) ===== */
+.crlf-rtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 10px; flex: none;
+  background: var(--crlf-bg, #f3f3f6); border: 1px solid var(--crlf-border, #ddd); }
+.crlf-rtab { all: unset; cursor: pointer; text-align: center; padding: 5px 4px; border-radius: 7px; font-weight: 600; font-size: 12px; }
+.crlf-rtab.crlf-on { background: var(--crlf-accent, #f47521); color: var(--crlf-on-accent, #1a0d04); }
+.crlf-rtab:focus-visible { outline: 2px solid var(--crlf-accent, #f47521); }
+.crlf-rlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.crlf-rrow { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--crlf-border, #e4e5ea); }
+.crlf-rfav { border-color: var(--crlf-accent, #f47521); background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.1); }
+.crlf-rnum { flex: none; width: 22px; text-align: center; font-size: 16px; color: var(--crlf-accent, #f47521); font-variant-numeric: tabular-nums; }
+.crlf-rimg { flex: none; width: 38px; height: 54px; object-fit: cover; border-radius: 6px; background: var(--crlf-bg, #eee); }
+.crlf-rtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.crlf-rname { all: unset; cursor: pointer; font-weight: 700; line-height: 1.25; color: inherit !important; text-decoration: none !important;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.crlf-rname:hover, .crlf-rname:focus-visible { color: var(--crlf-accent, #f47521) !important; }
+.crlf-rmeta { color: var(--crlf-muted, #6b6f7d); font-size: 11.5px; }
+.crlf-rtags { display: flex; gap: 4px; flex-wrap: wrap; }
+.crlf-rtag { font-style: normal; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  background: rgba(127, 127, 140, 0.18); color: var(--crlf-muted, #6b6f7d); }
+.crlf-rtag-fav { background: var(--crlf-accent, #f47521); color: var(--crlf-on-accent, #1a0d04); }
+.crlf-rpanel .crlf-cfoot { flex-direction: row; gap: 4px; font-size: 11.5px; color: var(--crlf-muted, #6b6f7d); margin: 0; }
+/* Sprung aus der Liste zur Karte: kurz aufleuchten */
+.crlf-item.crlf-flash { animation: crlf-flash 1.2s ease; }

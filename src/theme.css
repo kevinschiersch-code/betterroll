@@ -1,0 +1,391 @@
+/* theme.css – Design des Simulcast-Kalenders und der Vorschau-Karte.
+   Alles wirkt nur, solange theme.js am <html> die Klasse crlf-themed setzt (Add-on an).
+   Abschnitte (===== …): Grundfarben, Flächen/Texte, Karten und Knöpfe · Hintergrund-Designs · Vorschau-Karte und Bewertungen */
+
+/* ===== Grundfarben (hell und dunkel, gleicher Kartenstil) ===== */
+html.crlf-themed {
+  --crlf-bg: #f3f3f6;
+  --crlf-surface: #ffffff;
+  --crlf-surface-2: #ffffff;
+  --crlf-border: #e4e5ea;
+  --crlf-fg: #1d1f26;
+  --crlf-muted: #6b6f7d;
+  --crlf-accent: #f47521;
+  --crlf-accent-2: #ff9d57;
+  --crlf-acc-rgb: 244, 117, 33;
+  --crlf-on-accent: #1a0d04;
+  --crlf-glow-top: 0.10;
+  --crlf-time: #e0620c;
+  --crlf-shadow: 0 1px 2px rgba(20, 22, 30, 0.06), 0 4px 14px rgba(20, 22, 30, 0.06);
+  --crlf-shadow-hover: 0 10px 24px rgba(20, 22, 30, 0.12), 0 0 0 1px rgba(var(--crlf-acc-rgb), 0.35);
+  --crlf-fav-tint: rgba(var(--crlf-acc-rgb), 0.12);
+  --crlf-fav-glow: 0.16;
+  --crlf-btn-bg: #ffffff;
+  --crlf-btn-border: #dcdde3;
+  --crlf-btn-fg: #8a8d99;
+  background: var(--crlf-bg) !important;
+}
+html.crlf-themed body {
+  background:
+    radial-gradient(1100px 420px at 50% -160px, rgba(var(--crlf-acc-rgb), var(--crlf-glow-top)), transparent 70%),
+    var(--crlf-bg) !important;
+  background-attachment: fixed !important;
+}
+html.crlf-dark {
+  --crlf-bg: #0e0f14;
+  --crlf-surface: #171820;
+  --crlf-surface-2: #1f2029;
+  --crlf-border: #2a2c38;
+  --crlf-fg: #eceef4;
+  --crlf-muted: #8f92a6;
+  --crlf-time: var(--crlf-accent-2);
+  --crlf-glow-top: 0.16;
+  --crlf-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --crlf-shadow-hover: 0 10px 26px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(var(--crlf-acc-rgb), 0.25), 0 0 24px rgba(var(--crlf-acc-rgb), 0.12);
+  --crlf-fav-tint: rgba(var(--crlf-acc-rgb), 0.22);
+  --crlf-fav-glow: 0.18;
+  --crlf-btn-bg: rgba(14, 15, 20, 0.85);
+  --crlf-btn-border: #3a3c4b;
+  --crlf-btn-fg: #b9bccb;
+  color-scheme: dark;
+  scrollbar-color: #343645 var(--crlf-bg);
+}
+html.crlf-dark body {
+  background:
+    radial-gradient(1100px 420px at 50% -160px, rgba(var(--crlf-acc-rgb), var(--crlf-glow-top)), transparent 70%),
+    var(--crlf-bg) !important;
+  color: var(--crlf-fg) !important;
+}
+
+/* Generisch eingefärbte Flächen/Texte (theme.js ordnet helle Flächen und dunkle Texte zu) */
+html.crlf-dark .crlf-s1 { background-color: var(--crlf-bg) !important; }
+html.crlf-dark .crlf-s2 { background-color: var(--crlf-surface) !important; }
+html.crlf-dark .crlf-fg { color: var(--crlf-fg) !important; }
+html.crlf-dark .crlf-fg2 { color: var(--crlf-muted) !important; }
+html.crlf-dark .crlf-bd { border-color: var(--crlf-border) !important; }
+html.crlf-dark .crlf-sh { box-shadow: none !important; }
+html.crlf-dark .crlf-gr { background-image: none !important; }
+html.crlf-dark body .crlf-hi.crlf-hi.crlf-hi { color: var(--crlf-fg) !important; -webkit-text-fill-color: var(--crlf-fg) !important; opacity: 1 !important; filter: none !important; mix-blend-mode: normal !important; }
+html.crlf-dark .crlf-pb:not(body)::before,
+html.crlf-dark .crlf-pa:not(body)::after,
+html.crlf-dark:not(.crlf-bg) body.crlf-pb::before,
+html.crlf-dark:not(.crlf-bg) body.crlf-pa::after { background: none !important; box-shadow: none !important; border-color: transparent !important; }
+
+/* Tagesspalten: wenig Innenabstand, damit Karten breiter und Lücken zwischen den Tagen klein werden */
+html.crlf-themed .crlf-day { padding-left: 3px !important; padding-right: 3px !important; margin-left: 0 !important; margin-right: 0 !important; }
+html.crlf-themed .crlf-daypath { padding-left: 0 !important; padding-right: 0 !important; margin-left: 0 !important; margin-right: 0 !important; width: auto !important; max-width: none !important; }
+html.crlf-themed .crlf-item:not(.crlf-dim) { width: auto !important; max-width: none !important; }
+
+/* Listen hinter den Karten durchsichtig, damit die Karten frei stehen */
+html.crlf-themed ol.releases,
+html.crlf-themed ol.releases > li { background: transparent !important; border-color: transparent !important; }
+
+/* Kalendereinträge als Karten */
+html.crlf-themed article.release,
+html.crlf-themed .js-release {
+  background: linear-gradient(180deg, var(--crlf-surface-2) 0%, var(--crlf-surface) 100%) !important;
+  border: 1px solid var(--crlf-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--crlf-shadow) !important;
+  margin: 0 0 6px !important;
+  padding: 8px 10px 10px !important;
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+html.crlf-themed article.release:hover,
+html.crlf-themed .js-release:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--crlf-acc-rgb), 0.55) !important;
+  box-shadow: var(--crlf-shadow-hover) !important;
+}
+html.crlf-themed article.release *,
+html.crlf-themed .js-release * { border-color: var(--crlf-border) !important; }
+html.crlf-themed article.release img,
+html.crlf-themed .js-release img { border-radius: 8px !important; }
+html.crlf-themed article.release time,
+html.crlf-themed .js-release time,
+html.crlf-themed .available-time {
+  color: var(--crlf-time) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+/* ruhigere, lesbare Schrift statt fetter Großbuchstaben */
+html.crlf-themed article.release,
+html.crlf-themed .js-release { line-height: 1.4 !important; }
+html.crlf-themed article.release *,
+html.crlf-themed .js-release * { text-transform: none !important; letter-spacing: normal !important; }
+html.crlf-themed .season-name,
+html.crlf-themed .season-name a,
+html.crlf-themed .season-name cite {
+  color: var(--crlf-fg) !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  line-height: 1.35 !important;
+  text-decoration: none !important;
+  hyphens: manual !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+html.crlf-themed .season-name { margin: 2px 0 2px !important; }
+html.crlf-themed article.release time,
+html.crlf-themed .js-release time,
+html.crlf-themed .available-time { display: inline-block; min-height: 20px; line-height: 20px !important; margin: 0 !important; }
+html.crlf-themed .crlf-timerow { margin-bottom: 2px; }
+
+/* enge Abstände zwischen den Kacheln, Zeitleisten-Punkte/-Striche der Seite entfernen */
+html.crlf-themed .crlf-item { margin: 0 !important; padding: 0 !important; border: none !important; background: transparent !important; }
+html.crlf-themed .crlf-item::before,
+html.crlf-themed .crlf-item::after,
+html.crlf-themed .crlf-item > *::before,
+html.crlf-themed article.release::before,
+html.crlf-themed article.release::after { display: none !important; }
+html.crlf-themed .season-name a:hover cite,
+html.crlf-themed .season-name a:hover { color: var(--crlf-time) !important; }
+
+/* Hervorgehoben: orange Glut */
+html.crlf-themed .crlf-fav article.release,
+html.crlf-themed article.crlf-fav,
+html.crlf-themed .crlf-fav.js-release {
+  outline: none !important;
+  border-color: var(--crlf-accent) !important;
+  background: linear-gradient(180deg, var(--crlf-fav-tint) 0%, var(--crlf-surface-2) 45%, var(--crlf-surface) 100%) !important;
+  box-shadow: 0 0 0 1px rgba(var(--crlf-acc-rgb), 0.6), 0 8px 28px rgba(var(--crlf-acc-rgb), var(--crlf-fav-glow)) !important;
+}
+
+/* Knöpfe */
+html.crlf-themed .crlf-btn {
+  background: var(--crlf-btn-bg) !important;
+  border-color: var(--crlf-btn-border) !important;
+  color: var(--crlf-btn-fg) !important;
+}
+html.crlf-themed .crlf-btn:hover { border-color: var(--crlf-accent) !important; color: var(--crlf-accent-2) !important; }
+html.crlf-themed .crlf-btn-fav.crlf-on { background: linear-gradient(135deg, var(--crlf-accent-2), var(--crlf-accent)) !important; border-color: var(--crlf-accent) !important; color: var(--crlf-on-accent) !important; }
+html.crlf-themed .crlf-btn-dim.crlf-on { background: #5a5d6e !important; border-color: #5a5d6e !important; color: #fff !important; }
+
+/* Umschalter unten rechts */
+#crlf-theme-toggle {
+  position: fixed; right: 20px; bottom: 20px; z-index: 2147483647;
+  width: 46px; height: 46px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, var(--crlf-accent-2), var(--crlf-accent)); color: var(--crlf-on-accent);
+  font-size: 20px; line-height: 1;
+  box-shadow: 0 6px 20px rgba(var(--crlf-acc-rgb), 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+#crlf-theme-toggle[hidden] { display: none; }
+#crlf-theme-toggle:hover { transform: translateY(-2px) rotate(-12deg); box-shadow: 0 10px 26px rgba(var(--crlf-acc-rgb), 0.55); }
+html:not(.crlf-dark) #crlf-theme-toggle { background: #23252b; color: var(--crlf-accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
+html.crlf-dark .crlf-alt { color: var(--crlf-accent-2) !important; background: rgba(var(--crlf-acc-rgb), 0.16); }
+html.crlf-dark .crlf-alt:hover { color: var(--crlf-on-accent) !important; background: var(--crlf-accent); }
+html.crlf-dark .crlf-tag, html.crlf-dark .crlf-tag:hover { color: var(--crlf-accent-2) !important; background: rgba(var(--crlf-acc-rgb), 0.16); }
+html.crlf-dark .crlf-season, html.crlf-dark .crlf-season:hover { color: #d9dbe5 !important; background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.16); }
+
+/* Tageskopf immer klar lesbar (die Seite dimmt den ausgewählten Tag) */
+html.crlf-themed .crlf-dayhead, html.crlf-themed .crlf-dayhead * { opacity: 1 !important; filter: none !important; mix-blend-mode: normal !important; }
+html.crlf-dark .crlf-dayhead, html.crlf-dark .crlf-dayhead * { color: var(--crlf-fg) !important; -webkit-text-fill-color: var(--crlf-fg) !important; }
+
+/* ===== Lebendiger Hintergrund (Auswahl im Popup: Aurora, Glow, Raster, Bild, Video) ===== */
+/* Jedes Design hat eine eigene, stimmige Palette: Grund, Glas-Karten, Akzent (Uhrzeit, Abzeichen, ★, Glut) */
+/* Aurora: tiefes Nachtblau, Violett/Pink/Türkis-Schleier, violetter Akzent */
+html.crlf-themed.crlf-dark.crlf-bg-aurora {
+  --crlf-bg: #0b0a18; --crlf-border: #2b2745; --crlf-muted: #a19bc2; --crlf-fg: #f1eefb;
+  --crlf-accent: #c084fc; --crlf-accent-2: #e2b6ff; --crlf-acc-rgb: 192, 132, 252; --crlf-on-accent: #1c0b2b;
+  --crlf-b1: rgba(192, 132, 252, 0.50); --crlf-b2: rgba(56, 189, 248, 0.32); --crlf-b3: rgba(244, 114, 182, 0.36);
+  --crlf-glass: rgba(22, 19, 42, 0.58); --crlf-glass-2: rgba(32, 27, 58, 0.62);
+  --crlf-btn-bg: rgba(22, 19, 42, 0.85); --crlf-btn-border: #3b3560;
+}
+/* Glow: warmes Glutlicht, Bernstein-Akzent, feines Filmkorn */
+html.crlf-themed.crlf-dark.crlf-bg-glow {
+  --crlf-bg: #120d0b; --crlf-border: #36281f; --crlf-muted: #ad9a8c; --crlf-fg: #f7efe9;
+  --crlf-accent: #ff8a3d; --crlf-accent-2: #ffc08a; --crlf-acc-rgb: 255, 138, 61; --crlf-on-accent: #241003;
+  --crlf-b1: rgba(255, 138, 61, 0.42); --crlf-b2: rgba(255, 72, 72, 0.20);
+  --crlf-glass: rgba(32, 22, 17, 0.62); --crlf-glass-2: rgba(44, 30, 22, 0.66);
+  --crlf-btn-bg: rgba(32, 22, 17, 0.85); --crlf-btn-border: #4a3528;
+}
+/* Raster: kühler Tech-Look, Türkis-Akzent, Punktraster */
+html.crlf-themed.crlf-dark.crlf-bg-grid {
+  --crlf-bg: #071017; --crlf-border: #17323e; --crlf-muted: #88a7b3; --crlf-fg: #e8f6fa;
+  --crlf-accent: #22d3ee; --crlf-accent-2: #8af0ff; --crlf-acc-rgb: 34, 211, 238; --crlf-on-accent: #02222a;
+  --crlf-b1: rgba(34, 211, 238, 0.30);
+  --crlf-dot: rgba(138, 240, 255, 0.16);
+  --crlf-glass: rgba(10, 26, 34, 0.62); --crlf-glass-2: rgba(14, 34, 44, 0.66);
+  --crlf-btn-bg: rgba(10, 26, 34, 0.85); --crlf-btn-border: #1f4757;
+}
+/* Bild: eigenes Hintergrundbild (theme.js malt es in #crlf-banner), neutrales Glas, Crunchyroll-Orange als Akzent */
+html.crlf-themed.crlf-dark.crlf-bg-banner {
+  --crlf-bg: #0c0d12; --crlf-border: rgba(255, 255, 255, 0.14); --crlf-muted: #b4b7c4; --crlf-fg: #f4f5f8;
+  --crlf-accent: #f47521; --crlf-accent-2: #ffad6b; --crlf-acc-rgb: 244, 117, 33; --crlf-on-accent: #1f0d02;
+  --crlf-glass: rgba(14, 15, 22, 0.6); --crlf-glass-2: rgba(22, 24, 34, 0.66);
+  --crlf-btn-bg: rgba(14, 15, 22, 0.85); --crlf-btn-border: rgba(255, 255, 255, 0.18);
+}
+#crlf-banner { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; display: block; }
+html:not(.crlf-bg-banner) #crlf-banner { display: none; }
+/* Video: Nachtmotive aus backgrounds/ (theme.js legt #crlf-video an), Milchglas-Kacheln, warmes Laternenlicht als Akzent */
+html.crlf-themed.crlf-dark.crlf-bg-video {
+  --crlf-bg: #111116; --crlf-border: rgba(255, 255, 255, 0.1); --crlf-muted: #b9bccb; --crlf-fg: #f4f4f8;
+  --crlf-accent: #ffb454; --crlf-accent-2: #ffd59a; --crlf-acc-rgb: 255, 180, 84; --crlf-on-accent: #241503;
+  --crlf-glass: rgba(20, 20, 30, 0.66); --crlf-glass-2: rgba(28, 28, 42, 0.72);
+  --crlf-btn-bg: rgba(20, 20, 30, 0.8); --crlf-btn-border: rgba(255, 255, 255, 0.16);
+}
+#crlf-video { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: #111; }
+html:not(.crlf-bg-video) #crlf-video { display: none; }
+/* zwei Ebenen für die Überblendung beim Motivwechsel; die neue blendet über der alten ein */
+#crlf-video .crlf-video-layer { position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity 2.5s ease-in-out; }
+#crlf-video .crlf-video-layer.crlf-top { z-index: 2; }
+#crlf-video .crlf-video-layer.crlf-on { opacity: 1; }
+#crlf-video .crlf-video-blur { position: absolute; inset: 0; background: center / cover no-repeat; filter: blur(40px) brightness(0.6); transform: scale(1.15); }
+#crlf-video .crlf-video-main {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; max-width: 2400px; height: auto;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 60%, transparent 100%); mask-image: radial-gradient(ellipse at center, #000 60%, transparent 100%);
+}
+/* abdunkeln, oben etwas mehr (Kopfbereich, Tagesköpfe), damit Kacheln und Schrift lesbar bleiben */
+#crlf-video .crlf-video-shade { position: absolute; inset: 0; z-index: 3; background: linear-gradient(rgba(8, 9, 14, 0.55), rgba(8, 9, 14, 0.25) 45%, rgba(8, 9, 14, 0.4)); }
+/* body durchsichtig, die Farbe kommt vom html; sonst deckt body die Ebene mit z-index -1 zu */
+html.crlf-themed.crlf-bg body { background: transparent !important; }
+html.crlf-themed.crlf-bg body .crlf-bgpath,
+html.crlf-themed.crlf-bg body .crlf-day,
+html.crlf-themed.crlf-bg body .crlf-daypath,
+html.crlf-themed.crlf-bg body .crlf-dayhead,
+html.crlf-themed.crlf-bg body .crlf-bgclear { background-color: transparent !important; background-image: none !important; }
+html.crlf-themed.crlf-bg body .crlf-barclear { background-color: transparent !important; transition: background-color 0.15s; }
+html.crlf-themed.crlf-bg body .crlf-barclear:hover, html.crlf-themed.crlf-bg body .crlf-barclear:focus-visible { background-color: rgba(255, 255, 255, 0.08) !important; }
+/* Karten als Glas über dem Hintergrund */
+html.crlf-themed.crlf-bg article.release,
+html.crlf-themed.crlf-bg .js-release {
+  --crlf-surface: var(--crlf-glass); --crlf-surface-2: var(--crlf-glass-2);
+}
+/* kein backdrop-filter auf Karten/Knöpfen: hunderte Unschärfe-Ebenen über dem (bewegten) Hintergrund überfordern Chrome,
+   beim Scrollen blieben dann einzelne Karten leer, bis die Maus darüberfuhr. Dichteres Glas statt Unschärfe. */
+/* Glas-Kacheln im Design „Video“ */
+html.crlf-themed.crlf-bg-video article.release,
+html.crlf-themed.crlf-bg-video .js-release {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 12px !important;
+}
+html.crlf-themed.crlf-bg body::before,
+html.crlf-themed.crlf-bg body::after { content: ""; position: fixed; pointer-events: none; z-index: -1; }
+
+/* A: Aurora, langsam wandernde Farbschleier */
+html.crlf-bg-aurora body::before {
+  inset: -20%; filter: blur(60px); opacity: 0.75;
+  background:
+    radial-gradient(35% 30% at 20% 25%, var(--crlf-b1), transparent 70%),
+    radial-gradient(30% 35% at 80% 20%, var(--crlf-b2), transparent 70%),
+    radial-gradient(40% 30% at 60% 85%, var(--crlf-b3), transparent 70%);
+  animation: crlfDrift 40s ease-in-out infinite alternate;
+}
+@keyframes crlfDrift { to { transform: translate(4%, -3%) rotate(8deg) scale(1.08); } }
+
+/* B: ruhiges Licht in zwei Ecken mit feinem Filmkorn */
+html.crlf-bg-glow body::before {
+  inset: 0;
+  background:
+    radial-gradient(900px 520px at 12% -12%, var(--crlf-b1), transparent 70%),
+    radial-gradient(800px 520px at 100% 112%, var(--crlf-b2), transparent 70%);
+}
+html.crlf-bg-glow body::after {
+  inset: 0; z-index: 2147483000; opacity: 0.14; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* C: feines Punktraster mit pulsierendem Lichtschein */
+html.crlf-bg-grid body::before {
+  inset: 0;
+  background: radial-gradient(var(--crlf-dot) 1px, transparent 1.4px) 0 0 / 22px 22px;
+  -webkit-mask: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 85%);
+  mask: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 85%);
+}
+html.crlf-bg-grid body::after {
+  left: 50%; top: -260px; width: 1100px; height: 520px; transform: translateX(-50%);
+  background: radial-gradient(closest-side, var(--crlf-b1), transparent);
+  animation: crlfPulse 8s ease-in-out infinite alternate;
+}
+@keyframes crlfPulse { to { opacity: 0.55; } }
+
+@media (prefers-reduced-motion: reduce) {
+  html.crlf-bg body::before, html.crlf-bg body::after { animation: none !important; }
+  #crlf-video .crlf-video-layer { transition: none; }
+}
+html.crlf-themed.crlf-bg .crlf-dayhead { border-color: var(--crlf-accent) !important; }
+
+/* ===== Vorschau-Karte und Bewertungszeilen ===== */
+/* deckende Flächenfarbe der Vorschau, auf html festgelegt (in Karten ist --crlf-surface durchscheinendes Glas) */
+html.crlf-themed { --crlf-pop-bg: var(--crlf-surface); }
+html.crlf-themed.crlf-dark.crlf-bg-aurora, html.crlf-themed.crlf-dark.crlf-bg-glow, html.crlf-themed.crlf-dark.crlf-bg-grid, html.crlf-themed.crlf-dark.crlf-bg-banner, html.crlf-themed.crlf-dark.crlf-bg-video { --crlf-pop-bg: color-mix(in srgb, var(--crlf-bg) 90%, var(--crlf-accent)); }
+html.crlf-themed [data-crlf-hidepop] { opacity: 0 !important; pointer-events: none !important; }
+.crlf-peek {
+  position: fixed; top: 8px; left: 8px; z-index: 2147483500; width: 440px; max-width: calc(100vw - 16px);
+  overflow: visible; pointer-events: auto; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  border-radius: 16px; font: 13px/1.4 system-ui, "Segoe UI", sans-serif; color: var(--crlf-fg, #1d1f26);
+  background: linear-gradient(160deg, rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.10), transparent 45%), var(--crlf-pop-bg, #fff);
+  border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.12);
+  animation: crlfPeekIn 0.14s ease-out;
+}
+html:not(.crlf-dark) .crlf-peek { box-shadow: 0 18px 44px rgba(20, 22, 30, 0.18), 0 0 0 1px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.12); }
+/* Position setzt theme.js neben die Karte (crlfPlacePeek); über dem Kommentar-Panel, falls es nicht anders passt */
+.crlf-peek.crlf-pk-over { z-index: 2147483640; }
+@keyframes crlfPeekIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .crlf-peek { animation: none; } }
+.crlf-peek * { box-sizing: border-box; }
+.crlf-pk-top { display: flex; gap: 14px; align-items: flex-start; min-height: 0; }
+.crlf-pk-poster { width: 112px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; flex: none; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35); }
+.crlf-pk-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.crlf-pk-title { font-weight: 800; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; color: var(--crlf-fg, #1d1f26);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.crlf-pk-title .crlf-season { vertical-align: 2px; }
+.crlf-pk-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.crlf-pk-btn { cursor: pointer; border-radius: 999px; padding: 6px 12px; font: 700 12px/1.2 system-ui, "Segoe UI", sans-serif;
+  border: 1px solid rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.45); background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.10); color: var(--crlf-time, #e0620c);
+  transition: transform 0.15s, box-shadow 0.15s; }
+.crlf-pk-btn:hover { transform: translateY(-1px); }
+.crlf-pk-btn.crlf-pk-primary { background: linear-gradient(135deg, var(--crlf-accent-2, #ff9d57), var(--crlf-accent, #f47521)); color: var(--crlf-on-accent, #1a0d04);
+  border-color: transparent; box-shadow: 0 4px 14px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); }
+.crlf-pk-btn:focus-visible { outline: 2px solid var(--crlf-accent, #f47521); outline-offset: 2px; }
+.crlf-pk-desc { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--crlf-fg, #1d1f26); opacity: 0.82; }
+.crlf-pk-ep { display: flex; gap: 12px; align-items: center; padding-top: 12px; border-top: 1px solid var(--crlf-border, #e4e5ea); }
+.crlf-pk-thumb { position: relative; width: 150px; flex: none; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: rgba(0, 0, 0, 0.25); }
+.crlf-pk-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.crlf-pk-thumb b { position: absolute; top: 6px; left: 6px; padding: 1px 7px; border-radius: 7px; font-size: 12px; font-weight: 800; color: #fff; background: rgba(0, 0, 0, 0.6); }
+.crlf-pk-shot { flex: none; display: flex; flex-direction: column; gap: 5px; }
+.crlf-pk-bar { height: 4px; border-radius: 2px; overflow: hidden; background: rgba(128, 128, 128, 0.3); }
+.crlf-pk-bar i { display: block; height: 100%; width: var(--p, 0%); border-radius: 2px; background: #f47521; }
+.crlf-pk-eptext { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.crlf-pk-eptext small { color: var(--crlf-time, #e0620c); font-weight: 800; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.crlf-pk-eptext span { font-weight: 600; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Handy-Modus: Vorschau als Blatt am unteren Rand (Lage/Größe: crlfFitSheet), mit ✕ */
+html[data-crlf-touch] .crlf-peek { max-width: none; overflow: auto; overscroll-behavior: contain; padding-top: 18px; animation: none; }
+html[data-crlf-touch] .crlf-pk-info { padding-right: 34px; }
+html[data-crlf-touch] .crlf-pk-btn { min-height: 38px; padding: 8px 14px; font-size: 13px; }
+.crlf-pk-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  font: 15px/1 system-ui, sans-serif; color: var(--crlf-fg, #1d1f26); background: var(--crlf-pop-bg, #fff); border: 1px solid var(--crlf-border, #ddd); }
+/* zu hoch fürs Fenster: breiter, dann kleiner (statt Scrollen) */
+.crlf-peek.crlf-pk-wide { width: 560px; }
+.crlf-peek.crlf-pk-small { padding: 12px; gap: 8px; }
+.crlf-pk-small .crlf-pk-desc { font-size: 11.5px; line-height: 1.35; }
+.crlf-pk-small .crlf-pk-poster { width: 88px; }
+.crlf-pk-small .crlf-pk-thumb { width: 120px; }
+.crlf-pk-small .crlf-pk-title { font-size: 14.5px; }
+.crlf-peek.crlf-pk-tiny { width: 680px; }
+.crlf-pk-tiny .crlf-pk-desc { font-size: 10.5px; line-height: 1.3; }
+.crlf-pk-tiny .crlf-pk-poster { width: 70px; }
+/* unsichtbare Brücke über den Spalt zur Karte, damit die Vorschau beim Hineinfahren offen bleibt */
+.crlf-peek::before { content: ""; position: absolute; top: -8px; bottom: -8px; width: 12px; }
+.crlf-peek[data-side="right"]::before { left: -12px; }
+.crlf-peek[data-side="left"]::before { right: -12px; }
+
+/* Bewertungszeilen „Crunchyroll“ / „Aktuell“: Beschriftung, Wert und darunter eine Zeile Zusatztext (feste Höhe,
+   damit die Vorschau beim Laden nicht springt; Platzhalter blass) */
+.crlf-pop-rating { display: grid; gap: 2px; margin: 0; font: 600 12px/1.3 system-ui, "Segoe UI", sans-serif; }
+.crlf-pop-rrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.crlf-pop-rrow i { flex: none; width: auto; min-width: 70px; white-space: nowrap; font-style: normal; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.03em; text-transform: uppercase; opacity: 0.8; }
+.crlf-pop-rating b { color: var(--crlf-time) !important; -webkit-text-fill-color: var(--crlf-time) !important; letter-spacing: 0.04em; font-size: 14px; }
+.crlf-pop-rating small { flex-basis: 100%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--crlf-muted) !important; -webkit-text-fill-color: var(--crlf-muted) !important; font-size: 11.5px; font-weight: 500; }
+/* Crunchyroll-Sterne teilweise gefüllt (z. B. 4,5 = 90 %) */
+.crlf-pop-rating b.crlf-stars {
+  background: linear-gradient(90deg, var(--crlf-time) var(--crlf-fill, 0%), rgba(140, 140, 160, 0.45) var(--crlf-fill, 0%)) !important;
+  -webkit-background-clip: text !important; background-clip: text !important;
+  color: transparent !important; -webkit-text-fill-color: transparent !important; font-size: 15px; letter-spacing: 0.08em; }
+.crlf-pop-rwait b, .crlf-pop-rwait b.crlf-stars { opacity: 0.45; }
+.crlf-pop-rwait small { font-style: italic; }

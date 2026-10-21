@@ -1,0 +1,230 @@
+/* popup.css – Aussehen des Popups (hell/dunkel über data-theme am <html>), Breite 310 px.
+   Ohne Scrollen: offen (Erweitert aufgeklappt) unter 600 px Höhe bleiben, so hoch dürfen Chrome-Popups werden. */
+
+/* ===== Farben ===== */
+:root[data-theme="dark"] {
+  --bg: #0e0f14; --card: #171820; --card-2: #1f2029; --fg: #eceef4; --muted: #8f92a6;
+  --line: #2a2c38; --track-off: #2c2e3a; --knob: #eceef4; --select: #12131a;
+  --hero: radial-gradient(420px 160px at 20% -40px, rgba(244,117,33,.35), transparent 70%), linear-gradient(180deg, #1a1311, #0e0f14);
+}
+:root[data-theme="light"] {
+  --bg: #f4f4f7; --card: #ffffff; --card-2: #fafafc; --fg: #1d1f26; --muted: #6b6f7d;
+  --line: #e3e4ea; --track-off: #d5d7df; --knob: #ffffff; --select: #f4f4f7;
+  --hero: radial-gradient(420px 160px at 20% -40px, rgba(244,117,33,.28), transparent 70%), linear-gradient(180deg, #fff3ea, #f4f4f7);
+}
+:root { --accent: #f47521; --accent-2: #ff9d57; }
+
+* { box-sizing: border-box; }
+body {
+  width: 310px; margin: 0; background: var(--bg); color: var(--fg);
+  font: 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif;
+  transition: background .2s, color .2s;
+}
+/* keine Scrollleiste */
+html, body { overflow: hidden; scrollbar-width: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+
+/* ===== Kopfzeile: Logo, Name, Status, ↻ / ☀ und Hauptschalter ===== */
+.hero { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--hero); border-bottom: 1px solid var(--line); }
+.logo { width: 24px; height: 24px; filter: drop-shadow(0 4px 10px rgba(244,117,33,.45)); }
+.titles { flex: 1; min-width: 0; }
+h1 { margin: 0; font-size: 14px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ver { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.sub { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub.warn { color: #ffb347; font-weight: 700; }
+.icon-btn {
+  flex: none; width: 28px; height: 28px; border-radius: 9px; border: 1px solid var(--line); cursor: pointer;
+  background: var(--card); color: var(--accent); font-size: 16px; padding: 0;
+  transition: transform .15s, border-color .15s;
+}
+.icon-btn:hover { border-color: var(--accent); transform: rotate(-12deg); }
+.hero .icon-btn:not(.icon-mini) { width: 26px; height: 26px; font-size: 14px; }
+/* kleiner Neu-laden-Knopf ↻, leuchtet nur, wenn eine neue Version bereitliegt */
+.icon-mini { width: 22px; height: 22px; border-radius: 7px; font-size: 13px; color: var(--muted); background: transparent; border-color: transparent; }
+.hero .icon-mini { width: 20px; height: 20px; }
+.icon-mini:hover { color: var(--accent); border-color: var(--line); transform: rotate(90deg); }
+.icon-mini.ready { color: var(--accent); border-color: var(--accent); }
+
+/* ===== Karten (Fassung, Kalender, Erweitert) ===== */
+main { padding: 6px 8px; }
+.sections { display: grid; gap: 4px; transition: opacity .2s; }
+.sections > * { min-width: 0; } /* lange Texte machen die Karten nicht breiter */
+/* Hauptschalter aus: restliche Einstellungen ausgegraut */
+.sections.off { opacity: .35; pointer-events: none; filter: grayscale(.6); }
+.card { background: linear-gradient(180deg, var(--card-2), var(--card)); border: 1px solid var(--line); border-radius: 14px; padding: 6px 10px 1px; }
+h2 { margin: 0 0 4px; font-size: 10.5px; font-weight: 700; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+
+/* ===== Karteikarten Kalender / Player ===== */
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 6px; padding: 3px; border-radius: 12px; background: var(--select); border: 1px solid var(--line); }
+.tab { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 4px; border: 0; border-radius: 9px; cursor: pointer;
+  background: transparent; color: var(--muted); font: inherit; font-weight: 700; font-size: 12.5px; transition: background .2s, color .2s, box-shadow .2s; }
+.tab i { font-style: normal; font-size: 13px; display: inline-flex; }
+.tab svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #1a0d04; box-shadow: 0 2px 10px rgba(244,117,33,.3); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* beide Seiten liegen übereinander: das Popup springt beim Umschalten nicht in der Höhe */
+.sections { grid-template-areas: "page"; }
+.page { grid-area: page; display: grid; gap: 4px; align-content: start; min-width: 0; animation: crlf-page .18s ease-out; }
+.page[hidden] { display: grid; visibility: hidden; animation: none; }
+@keyframes crlf-page { from { opacity: 0; transform: translateY(3px); } }
+/* große Zeilen auf der Player-Seite: Symbol, Name und kurze Erklärung */
+.opt-big { padding: 7px 0; }
+.opt-big > span > span { display: block; }
+.opt-big b { display: block; font-size: 13px; }
+.opt-big .chip { flex: none; width: 30px; height: 30px; border-radius: 10px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); }
+.chip-line svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.opt-big small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+
+/* Zeile mit Beschriftung und Schalter */
+.opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; cursor: pointer; border-top: 1px solid var(--line); }
+.card h2 + .opt { border-top: none; }
+.opt span { display: flex; align-items: center; gap: 8px; }
+
+/* runde Symbole vor Schaltern */
+.chip { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; }
+
+/* Schiebeschalter */
+.switch {
+  appearance: none; flex: none; position: relative; width: 38px; height: 22px; margin: 0; cursor: pointer;
+  border-radius: 999px; background: var(--track-off); transition: background .2s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--knob); box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s cubic-bezier(.3,1.4,.6,1);
+}
+.switch:checked { background: linear-gradient(135deg, var(--accent-2), var(--accent)); box-shadow: 0 0 12px rgba(244,117,33,.35); }
+.switch:checked::after { transform: translateX(16px); background: #fff; }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* mehrere kleine Schalter in einer Zeile („Knöpfe“ ★ ▼ 💬 🏆, „Player“ ⏩ ⏭ ✕) */
+.pair { cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 5px; }
+.pair > span { grid-column: 1 / -1; }
+.pair label { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 5px; cursor: pointer; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); }
+.pair label b { flex: 1; font-weight: 600; font-size: 11px; letter-spacing: -.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pair .chip { width: 14px; height: 20px; color: var(--muted); }
+.pair .chip svg { width: 14px; height: 14px; }
+.pair label:has(.switch:checked) .chip { color: var(--accent); }
+.pair .switch { width: 28px; height: 17px; }
+.pair .switch::after { width: 11px; height: 11px; }
+.pair .switch:checked::after { transform: translateX(11px); }
+
+/* ===== Auswahlfeld Sprache ===== */
+.select-wrap { position: relative; margin-bottom: 4px; }
+.select-wrap::after { content: "▾"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--accent); pointer-events: none; }
+select {
+  appearance: none; width: 100%; padding: 5px 30px 5px 12px; font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--select); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+}
+select:hover, select:focus { border-color: var(--accent); outline: none; }
+#langWrap { transition: opacity .2s; }
+#langWrap.off { opacity: .35; pointer-events: none; }
+
+/* ===== Auswahl-Leisten (Fassung, Design, Bilder, Datum, Sprache) ===== */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; margin-bottom: 4px; border-radius: 10px; background: var(--select); border: 1px solid var(--line); }
+.seg label { cursor: pointer; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; text-align: center; padding: 4px 4px; border-radius: 7px; transition: background .2s, color .2s; }
+.seg b { display: block; font-size: 12.5px; }
+.seg small { display: block; font-size: 10px; color: var(--muted); font-weight: 500; }
+.seg input:checked + span { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #1a0d04; box-shadow: 0 2px 10px rgba(244,117,33,.3); }
+.seg input:checked + span small { color: rgba(26,13,4,.75); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg-label { margin: 2px 0 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.design-box summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+.design-box summary::-webkit-details-marker { display: none; }
+.design-box summary::after { content: "▾"; color: var(--accent); transition: transform .2s; }
+.design-box[open] summary::after { transform: rotate(180deg); }
+/* drei Felder (Fassung, Bilder) */
+.seg3 { grid-template-columns: 1fr 1fr 1fr; margin-top: 4px; }
+/* Hinweis unter der Fassung („Pro Anime eine Karte …“) */
+.hint-line { margin: 3px 2px 4px; font-size: 11px; line-height: 1.3; color: var(--muted); }
+#modeHint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Design: sechs Felder mit Farbmuster */
+.seg6, .seg7 { grid-template-columns: repeat(6, 1fr); gap: 2px; margin-bottom: 6px; }
+.seg7 { grid-template-columns: repeat(7, 1fr); }
+.seg6 span, .seg7 span { padding: 4px 1px 3px; }
+.seg6 b, .seg7 b { font-size: 10px; }
+.sw { display: block; width: 22px; height: 14px; margin: 0 auto 3px; border-radius: 5px; border: 1px solid rgba(128,128,140,.35); }
+.sw-light { background: linear-gradient(135deg, #ffffff 50%, #f47521 50%); }
+.sw-dark { background: linear-gradient(135deg, #171820 50%, #f47521 50%); }
+.sw-aurora { background: radial-gradient(circle at 25% 30%, #c084fc, transparent 60%), radial-gradient(circle at 80% 70%, #38bdf8, transparent 60%), #0b0a18; }
+.sw-glow { background: radial-gradient(circle at 20% 20%, #ff8a3d, transparent 65%), #120d0b; }
+.sw-grid { background: radial-gradient(#8af0ff 0.8px, transparent 1.2px) 0 0 / 4px 4px, #071017; }
+.sw-video { background: radial-gradient(circle at 70% 30%, #ffd59a 0 2px, transparent 3px), linear-gradient(#1b2340, #3a2c3f 70%, #ffb454 140%); }
+.sw-banner { background: linear-gradient(160deg, #5b7cfa 0%, #f47521 100%); background-size: cover; background-position: center; }
+
+/* Design „Bild“: Zeile für das eigene Hintergrundbild (Adresse, 📁, ✕) und Hinweis bei Fehler/Laden */
+.banner-row { display: flex; gap: 4px; align-items: center; padding: 0 0 4px; }
+.banner-row[hidden], .banner-hint[hidden], .video-row[hidden] { display: none; }
+.video-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 0 6px; }
+.video-row label { position: relative; cursor: pointer; }
+.video-row input { position: absolute; opacity: 0; pointer-events: none; }
+.video-row img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 7px; border: 2px solid transparent; box-sizing: border-box; }
+.video-row input:checked + img { border-color: var(--accent); box-shadow: 0 2px 10px rgba(244,117,33,.3); }
+.video-row .video-auto { grid-column: 1 / -1; }
+.video-auto span { display: block; text-align: center; font-size: 11.5px; padding: 3px; border-radius: 7px; background: var(--select); border: 1px solid var(--line); }
+.video-row input:checked + span { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #1a0d04; border-color: transparent; }
+.video-row input:focus-visible + span, .video-row input:focus-visible + img { outline: 2px solid var(--accent); outline-offset: 1px; }
+.banner-row input[type=url] { flex: 1; min-width: 0; padding: 4px 8px; font: inherit; font-size: 11.5px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--select); color: inherit; }
+.banner-row input[type=url]:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+.icon-sq { width: 26px; height: 26px; flex: none; border-radius: 8px; font-size: 12px; padding: 0; }
+.banner-hint { font-size: 10.5px; margin: -2px 2px 4px; color: var(--muted); }
+.banner-hint.err { color: #ffb347; }
+
+/* Beschriftung und Auswahl in einer Zeile (Bilder, Datum, Sprache) */
+.date-row { display: flex; align-items: center; gap: 10px; padding: 4px 0 6px; border-top: 1px solid var(--line); }
+.date-row > span { flex: none; }
+.date-row .seg { flex: 1; margin: 0 !important; }
+.date-row .seg b { font-size: 11px; white-space: nowrap; }
+.date-row .seg3 { margin-top: 0; }
+.card > .date-row { padding: 6px 0 0; }
+
+/* Regler „Größe“ der Vorschaubilder (unter „Bilder“) */
+.size-row { display: flex; align-items: center; gap: 10px; padding: 2px 0 6px; }
+.size-row > span { flex: none; }
+.size-row input[type=range] { flex: 1; min-width: 0; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.size-row output { flex: none; width: 38px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.size-row.off { opacity: .35; pointer-events: none; }
+
+/* ===== Erweitert: einklappbar, Zeilen flacher ===== */
+.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding-bottom: 4px; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary h2 { margin: 0; }
+.more summary::after { content: "▾"; color: var(--accent); transition: transform .2s; }
+.more[open] summary::after { transform: rotate(180deg); }
+.more:not([open]) { padding-bottom: 6px; }
+.more summary + .opt { border-top: none; }
+.more .opt { padding: 3px 0; }
+.more .seg { margin-bottom: 8px; }
+.more .date-row { padding: 2px 0 3px; }
+.more .date-row .seg span { padding: 2px 4px; }
+
+/* ===== Firefox für Android öffnet das Popup als ganze Seite: Breite des Bildschirms nutzen, Scrollen erlauben ===== */
+@media (hover: none) and (pointer: coarse) {
+  html, body { overflow: auto; }
+  body { width: auto; max-width: 520px; margin: 0 auto; }
+  .icon-btn, .hero .icon-btn:not(.icon-mini), .hero .icon-mini { width: 36px; height: 36px; font-size: 16px; }
+}
+
+/* Fehlerliste (Erweitert): letzte Fehler, nur lokal */
+.errs { padding: 6px 0 2px; font-size: 12px; }
+.errs-head { display: flex; align-items: center; gap: 6px; }
+.errs-head > span:first-child { flex: 1; }
+.errs-none { color: var(--muted); }
+.errs-btn { border: 1px solid var(--line, rgba(128,128,128,.35)); background: transparent; color: inherit; font: inherit; font-size: 11px; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.errs-btn:hover { border-color: var(--accent); }
+.errs-list { margin: 4px 0 0; padding: 0; list-style: none; max-height: 120px; overflow: auto; }
+.errs-list li { padding: 3px 0; border-top: 1px solid var(--line, rgba(128,128,128,.2)); color: var(--muted); overflow-wrap: anywhere; }
+.errs-list b { color: var(--fg, inherit); font-weight: 600; }
+
+/* kurze Rückmeldung oben im Popup (Sicherung): grün = geklappt, rot = Fehler; blendet sich selbst aus */
+.toast { position: fixed; top: 8px; left: 50%; transform: translate(-50%, -8px); z-index: 10; max-width: calc(100% - 24px);
+  padding: 7px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 700; color: #fff; background: #2e9d57;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.bad { background: #c94141; }
+.errs-btn.done { border-color: #2e9d57; background: #2e9d57; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }

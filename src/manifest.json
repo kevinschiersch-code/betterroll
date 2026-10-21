@@ -1,0 +1,101 @@
+{
+  "manifest_version": 3,
+  "name": "BetterRoll",
+  "version": "1.86.0",
+  "description": "Macht den Crunchyroll-Simulcast-Kalender übersichtlich: Sprachfilter, Favoriten, Poster, Bewertungen und Kommentare. Inoffiziell.",
+  "permissions": [
+    "storage",
+    "nativeMessaging"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BetterRoll",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.crunchyroll.com/*simulcastcalendar*"
+      ],
+      "js": [
+        "diag.js",
+        "i18n.js",
+        "theme.js"
+      ],
+      "css": [
+        "theme.css"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.crunchyroll.com/*simulcastcalendar*"
+      ],
+      "js": [
+        "languages.js",
+        "match.js",
+        "content.js",
+        "comments.js",
+        "rank.js",
+        "dateformat.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.crunchyroll.com/*"
+      ],
+      "js": [
+        "series.js",
+        "overlay.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.crunchyroll.com/*",
+        "https://static.crunchyroll.com/*"
+      ],
+      "js": [
+        "speed.js",
+        "skip.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://api.jikan.moe/*",
+    "https://graphql.anilist.co/*",
+    "https://cdn.animenewsnetwork.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "backgrounds/*"
+      ],
+      "matches": [
+        "https://www.crunchyroll.com/*"
+      ]
+    }
+  ]
+}

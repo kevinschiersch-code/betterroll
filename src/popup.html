@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <!-- Texte mit data-i18n / data-i18n-title / data-i18n-aria übersetzt popup.js (siehe i18n.js) -->
+  <header class="hero">
+    <img class="logo" src="icons/icon48.png" alt="">
+    <div class="titles">
+      <h1>BetterRoll <span id="ver" class="ver"></span></h1>
+      <small id="status" class="sub">…</small>
+    </div>
+    <button id="reload" class="icon-btn icon-mini" type="button" title="Add-on und Kalender neu laden" aria-label="Add-on und Kalender neu laden" data-i18n-title data-i18n-aria>↻</button>
+    <button id="theme" class="icon-btn" type="button" title="Popup hell/dunkel umschalten" aria-label="Popup hell/dunkel umschalten" data-i18n-title data-i18n-aria></button>
+    <input type="checkbox" id="active" class="switch" title="Add-on an/aus" aria-label="Add-on aktiv" data-i18n-title data-i18n-aria>
+  </header>
+
+  <main>
+
+    <!-- zwei Karteikarten: Kalender und Player (gewählte Karte in storage.local "popupTab") -->
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" id="tabCal" data-tab="cal"><i><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></i><span data-i18n>Kalender</span></button>
+      <button type="button" class="tab" role="tab" id="tabPlayer" data-tab="player"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5l11 6.5-11 6.5z"/></svg></i><span data-i18n>Player</span></button>
+    </nav>
+    <div id="sections" class="sections">
+     <div class="page" id="pageCal" role="tabpanel">
+      <section class="card">
+        <h2 data-i18n>Fassung</h2>
+        <div class="select-wrap" id="langWrap">
+          <select id="language" aria-label="Sprache" data-i18n-aria></select>
+        </div>
+        <div class="seg seg3" role="radiogroup" aria-label="Welche Fassung zeigen" data-i18n-aria>
+          <label><input type="radio" name="mode" value="lang"><span><b id="modeLang">Deutsch</b><small data-i18n>bevorzugt</small></span></label>
+          <label><input type="radio" name="mode" value="original"><span><b data-i18n>OmU</b><small data-i18n>bevorzugt</small></span></label>
+          <label><input type="radio" name="mode" value="all"><span><b data-i18n>Alle</b><small data-i18n>ungefiltert</small></span></label>
+        </div>
+        <p class="hint-line" id="modeHint"></p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n>Kalender</h2>
+        <label class="opt">
+          <span data-i18n>Kopfbereich ausblenden</span>
+          <input type="checkbox" id="hideTop" class="switch">
+        </label>
+        <!-- Design-Bereich ein-/ausklappbar (Zustand in storage.local "designOpen") -->
+        <details class="design-box" id="designBox" open>
+        <summary class="seg-label"><span data-i18n>Design</span></summary>
+        <div class="seg seg7" role="radiogroup" aria-label="Design des Kalenders" data-i18n-aria>
+          <label><input type="radio" name="design" value="light"><span><i class="sw sw-light"></i><b data-i18n>Hell</b></span></label>
+          <label><input type="radio" name="design" value="dark"><span><i class="sw sw-dark"></i><b data-i18n>Dunkel</b></span></label>
+          <label><input type="radio" name="design" value="aurora"><span><i class="sw sw-aurora"></i><b>Aurora</b></span></label>
+          <label><input type="radio" name="design" value="glow"><span><i class="sw sw-glow"></i><b>Glow</b></span></label>
+          <label><input type="radio" name="design" value="grid"><span><i class="sw sw-grid"></i><b data-i18n>Raster</b></span></label>
+          <label><input type="radio" name="design" value="banner"><span><i class="sw sw-banner" id="bannerSw"></i><b data-i18n>Bild</b></span></label>
+          <label><input type="radio" name="design" value="video"><span><i class="sw sw-video"></i><b>Video</b></span></label>
+        </div>
+        <!-- Motiv des Designs „Video“ (Standbilder aus backgrounds/, popup.js füllt die Liste) -->
+        <div class="video-row" id="videoRow" role="radiogroup" aria-label="Motiv des Hintergrundvideos" data-i18n-aria hidden></div>
+        <!-- eigenes Hintergrundbild (Design „Bild“): Adresse eines Bildes oder Datei vom PC -->
+        <div class="banner-row" id="bannerRow" hidden>
+          <input type="url" id="bannerUrl" aria-label="Adresse des Hintergrundbilds" data-i18n-aria spellcheck="false">
+          <button id="bannerFile" class="icon-btn icon-sq" type="button" title="Bild vom PC wählen" aria-label="Bild vom PC wählen" data-i18n-title data-i18n-aria>📁</button>
+          <button id="bannerClear" class="icon-btn icon-sq" type="button" title="Bild entfernen" aria-label="Bild entfernen" data-i18n-title data-i18n-aria>✕</button>
+          <input type="file" id="bannerPick" accept="image/*" hidden>
+        </div>
+        <p class="hint-line banner-hint" id="bannerHint" hidden></p>
+        </details>
+        <div class="date-row">
+          <span data-i18n>Bilder</span>
+          <div class="seg seg3" role="radiogroup" aria-label="Vorschaubilder der Karten" data-i18n-aria>
+            <label title="Vorschaubild bei jedem Anime" data-i18n-title><input type="radio" name="thumbs" value="all"><span><b data-i18n>Alle</b></span></label>
+            <label title="Vorschaubild nur bei hervorgehobenen (★)" data-i18n-title><input type="radio" name="thumbs" value="fav"><span><b data-i18n>★ Favoriten</b></span></label>
+            <label title="Keine Vorschaubilder" data-i18n-title><input type="radio" name="thumbs" value="none"><span><b data-i18n>Keine</b></span></label>
+          </div>
+        </div>
+        <div class="size-row" id="sizeRow">
+          <span data-i18n>Größe</span>
+          <input type="range" id="posterSize" min="35" max="100" step="5" aria-label="Größe der Vorschaubilder" data-i18n-aria>
+          <output id="posterSizeOut">100 %</output>
+        </div>
+      </section>
+
+      <details class="card more" id="more">
+        <summary><h2 data-i18n>Erweitert</h2></summary>
+        <div class="opt pair">
+          <span data-i18n>Knöpfe</span>
+          <label title="Hervorheben-Knopf" data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></i><b data-i18n>Hervorheben</b><input type="checkbox" id="featureFav" class="switch"></label>
+          <label title="Ausblenden-Knopf" data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 9z"/></svg></i><b data-i18n>Ausblenden</b><input type="checkbox" id="featureDim" class="switch"></label>
+          <label title="Kommentare-Knopf (AniList)" data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16h-8l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z"/></svg></i><b data-i18n>Kommentare</b><input type="checkbox" id="featureComments" class="switch"></label>
+          <label title="Top 10 der Season" data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3M12 13v4M8.5 20h7M10 17h4"/></svg></i><b data-i18n>Top 10</b><input type="checkbox" id="featureRank" class="switch"></label>
+          <label title="Im Kalender: H = Heute, F = nur Favoriten, T = Top 10" data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17.5 10.5h.01M8 14h8"/></svg></i><b data-i18n>Tastenkürzel</b><input type="checkbox" id="hotkeys" class="switch"></label>
+          <label title="Schreibt alle 10 s Messwerte in die Browser-Konsole (F12). Bleibt auf diesem PC." data-i18n-title><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 17a8 8 0 1 1 15 0M12 13l3.5-4M12 13h.01"/></svg></i><b data-i18n>Messung</b><input type="checkbox" id="diag" class="switch"></label>
+        </div>
+        <label class="opt">
+          <span title="Aus: Favoriten bleiben hervorgehoben, aber an ihrer Stelle im Kalender" data-i18n data-i18n-title>★ Favoriten nach oben</span>
+          <input type="checkbox" id="favTop" class="switch">
+        </label>
+        <label class="opt">
+          <span title="Sprache und Staffel als Abzeichen" data-i18n data-i18n-title>Titel aufräumen</span>
+          <input type="checkbox" id="tidy" class="switch">
+        </label>
+        <div class="errs">
+          <div class="errs-head"><span data-i18n>Letzte Fehler</span><span id="errNone" class="errs-none" data-i18n>keine</span>
+            <button type="button" id="errCopy" class="errs-btn" hidden data-i18n>Kopieren</button><button type="button" id="errClear" class="errs-btn" hidden data-i18n>Leeren</button></div>
+          <ol id="errList" class="errs-list"></ol>
+        </div>
+        <div class="errs backup">
+          <div class="errs-head"><span title="Einstellungen und ★/▼ als Datei auf diesem PC sichern bzw. wieder einspielen" data-i18n data-i18n-title>Sicherung</span>
+            <button type="button" id="bkSave" class="errs-btn" data-i18n>Sichern</button><button type="button" id="bkLoad" class="errs-btn" data-i18n>Laden</button></div>
+          <small id="bkHint" class="errs-none"></small>
+          <input type="file" id="bkFile" accept=".json,application/json" hidden>
+        </div>
+        <div class="date-row">
+        <span data-i18n>Datum</span>
+        <div class="seg" role="radiogroup" aria-label="Datum und Uhrzeit" data-i18n-aria>
+          <label><input type="radio" name="dateFormat" value="de"><span><b>17.10. · 17:00</b></span></label>
+          <label><input type="radio" name="dateFormat" value="original"><span><b>10/17 · 5:00pm</b></span></label>
+        </div>
+        </div>
+      </details>
+     </div>
+     <div class="page" id="pagePlayer" role="tabpanel">
+      <section class="card">
+        <h2 data-i18n>Wiedergabe</h2>
+        <label class="opt opt-big">
+          <span><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6l7 6-7 6M13 6l7 6-7 6"/></svg></i><span><b data-i18n>Geschwindigkeit</b><small data-i18n>Tempo im Menü „1x“, Tasten − / +</small></span></span>
+          <input type="checkbox" id="speedCtl" class="switch">
+        </label>
+        <label class="opt opt-big">
+          <span><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6l9 6-9 6zM18 6v12"/></svg></i><span><b data-i18n>Auto-Skip</b><small data-i18n>Intro, Rückblick und Abspann überspringen</small></span></span>
+          <input type="checkbox" id="autoSkip" class="switch">
+        </label>
+      </section>
+      <section class="card">
+        <h2 data-i18n>Einblendungen</h2>
+        <label class="opt opt-big">
+          <span><i class="chip chip-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></i><span><b data-i18n>Automatisch schließen</b><small data-i18n>Bildschirmfüllende Hinweise, z. B. nach der letzten Folge</small></span></span>
+          <input type="checkbox" id="autoClose" class="switch">
+        </label>
+      </section>
+     </div>
+    </div>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="languages.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
