@@ -243,12 +243,16 @@ function restoreAvailable() {
 // Crunchyroll zeigt angemeldeten Besuchern in jeder Karte einen Fortschrittsbalken (<progress>). Dessen Wert nutzt das
 // Add-on: gesehene Folge (ab 90 %) -> Karte ausgegraut (.crlf-watched); Balken orange bzw. eigener Balken unter dem
 // Poster, wenn der Balken der Seite unsichtbar ist. Keine eigene Anmeldung, keine Abfragen.
+// Erst alle Karten vermessen, dann alles ändern: so rechnet der Browser das Layout einmal statt einmal je Karte.
 function updateProgress(releases) {
-  for (const release of releases) {
+  const plans = releases.map((release) => {
     const bars = settings.active ? siteBars(release) : [];
     const v = bars.length ? siteBarValue(bars[0]) : undefined;
+    return { release, v, plan: progressPlan(release, v, bars) };
+  });
+  for (const { release, v, plan } of plans) {
     releaseContainer(release).classList.toggle("crlf-watched", v !== undefined && v >= 0.9);
-    progressBar(release, v, bars);
+    progressBar(release, v, plan);
   }
 }
 
@@ -281,21 +285,12 @@ function siteBarValue(e) {
   const max = parseFloat(e.tagName === "PROGRESS" ? e.getAttribute("max") || 1 : e.getAttribute("aria-valuemax") || 100);
   return v >= 0 && max > 0 ? Math.min(1, v / max) : undefined;
 }
-// Eigener orangefarbener Balken unter dem Kartenbild. p: 0..1, undefined = kein Wert (kein Balken); bars = Balken der Seite
-function progressBar(release, p, bars) {
-  let bar = release.querySelector(".crlf-pbar");
-  const site = bars.find((e) => siteBarVisible(e, release));
-  if (site) { if (bar) bar.remove(); return; } // Balken der Seite sichtbar: er ist der einzige (per CSS orange)
+// Eigener orangefarbener Balken unter dem Kartenbild – Lesephase: wohin und wie breit (null = kein eigener Balken).
+// p: 0..1, undefined = kein Wert; bars = Balken der Seite
+function progressPlan(release, p, bars) {
+  if (bars.some((e) => siteBarVisible(e, release))) return null; // Balken der Seite sichtbar: er ist der einzige (per CSS orange)
   const img = p === undefined || !settings.active ? null : cardImage(release);
-  if (!img) {
-    if (bar) bar.remove();
-    return;
-  }
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.className = "crlf-pbar";
-    bar.append(document.createElement("i"));
-  }
+  if (!img) return null;
   // hinter die Bildhülle setzen (Hülle = Vorfahren, die kaum größer als das Bild sind; sonst würde der Balken abgeschnitten)
   const ir = img.getBoundingClientRect();
   let anchor = img;
@@ -304,8 +299,23 @@ function progressBar(release, p, bars) {
     if (r.height > ir.height + 8 || r.width > ir.width + 24) break;
     anchor = anchor.parentElement;
   }
+  return { anchor, width: Math.round(ir.width) };
+}
+// Schreibphase: Balken anlegen, setzen oder entfernen
+function progressBar(release, p, plan) {
+  let bar = release.querySelector(".crlf-pbar");
+  if (!plan) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "crlf-pbar";
+    bar.append(document.createElement("i"));
+  }
+  const { anchor, width } = plan;
   if (bar.previousElementSibling !== anchor) anchor.after(bar);
-  bar.style.width = `${Math.round(ir.width)}px`;
+  if (bar.style.width !== `${width}px`) bar.style.width = `${width}px`;
   const pct = Math.round(p * 100);
   bar.firstChild.style.width = `${pct}%`;
   bar.title = T("Fortschritt {0} %", pct);
@@ -487,10 +497,13 @@ chrome.storage.local.get({ crPosters4: {} }, (r) => {
   scheduleFilter();
 });
 
-// Kartenbild durch das Poster ersetzen (Poster der Seite nur auf gleiche Größe bringen)
-function showPoster(release) {
-  // sichtbares Kartenbild (eben erst eingeblendete Bilder haben evtl. noch keine Größe)
-  const img = cardImage(release) || [...release.querySelectorAll("img")].find((i) => i.getAttribute("src") && !isHidden(i, release));
+// sichtbares Kartenbild, das ein Poster bekommen soll (Lesephase; eben erst eingeblendete Bilder haben evtl. noch keine Größe)
+function posterImage(release) {
+  if (release.querySelector("img.crlf-poster")) return null; // schon erledigt: nichts messen
+  return cardImage(release) || [...release.querySelectorAll("img")].find((i) => i.getAttribute("src") && !isHidden(i, release)) || null;
+}
+// Kartenbild durch das Poster ersetzen (Poster der Seite nur auf gleiche Größe bringen); img aus posterImage
+function showPoster(release, img) {
   if (!img || img.classList.contains("crlf-poster")) return;
   if (landscapeScore(img) === -1) { img.classList.add("crlf-poster-fit"); return; } // Poster der Seite: gleiche Größe
   const src = posterFor(release);
@@ -795,9 +808,11 @@ function applyFilterNow() {
     const c = releaseContainer(r);
     if (c.dataset.crlfIndex === undefined) c.dataset.crlfIndex = nextIndex++;
   }
+  const titled = [];
   for (const release of releases) {
     const title = releaseTitle(release);
     if (title === null) continue;
+    titled.push(release);
     const key = crBaseTitle(title);
     const mark = activeMark(key);
     const container = releaseContainer(release);
@@ -809,11 +824,14 @@ function applyFilterNow() {
     const thumbs = settings.thumbs;
     if (thumbs === "all" || (thumbs === "fav" && mark === "fav")) showThumbnail(release);
     else if (release.querySelector(".crlf-show, img[data-crlf-orig-src]")) restoreThumbnail(release);
-    if (settings.active && thumbs !== "none") showPoster(release); else restorePoster(release);
     container.classList.toggle("crlf-noimg", settings.active && thumbs === "none");
     container.classList.toggle("crlf-dim", mark === "dim");
     if (container.parentElement) lists.add(container.parentElement);
   }
+  // Poster: erst die Bilder aller Karten bestimmen (misst Größen), dann ersetzen – eine Layout-Berechnung statt einer je Karte
+  const posters = settings.active && settings.thumbs !== "none";
+  const imgs = titled.map((r) => (posters ? posterImage(r) : null));
+  titled.forEach((r, i) => (posters ? showPoster(r, imgs[i]) : restorePoster(r)));
   if (settings.active) prefetchPosters(releases);
   posterWidth(releases);
   updateProgress(releases);
