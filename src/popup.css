@@ -228,3 +228,7 @@ select:hover, select:focus { border-color: var(--accent); outline: none; }
 .toast.bad { background: #c94141; }
 .errs-btn.done { border-color: #2e9d57; background: #2e9d57; color: #fff; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* KS-Monogramm: dezentes Urheberzeichen unten, Farbe folgt dem Thema */
+.sig { display: flex; justify-content: center; padding: 2px 0 10px; }
+.ks { display: block; width: 20px; height: 20px; color: var(--muted); opacity: .45; }

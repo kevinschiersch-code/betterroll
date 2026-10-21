@@ -20,3 +20,7 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 2px 6px; border: 1px so
 /* nur die gewählte Sprache zeigen (ohne JS: Deutsch) */
 html:not([data-lang="en"]) [lang="en"], html[data-lang="en"] [lang="de"] { display: none !important; }
 @media (max-width: 520px) { h1 { font-size: 26px; } header img { width: 52px; height: 52px; } }
+
+/* KS-Monogramm: dezentes Urheberzeichen unten */
+.sig { display: flex; justify-content: center; padding: 8px 0 28px; }
+.ks { display: block; width: 32px; height: 32px; color: var(--muted); opacity: .4; }
