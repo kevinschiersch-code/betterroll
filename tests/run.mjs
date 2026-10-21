@@ -195,6 +195,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     pop.style.cssText = "position:absolute;z-index:50;width:300px";
     pop.innerHTML = `<img src="/slow/poster.png?${Date.now()}"><h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2>`
       + `<p>Eine Beschreibung, die lang genug ist, um als Beschreibung erkannt zu werden.</p><img src="/slow/thumb.png?${Date.now()}"><span>3</span><span>Der Folgentitel</span>`;
+    pop.className = "test-pop";
     card.append(pop);
     crlfHoverCard = card;
     crlfPeek(pop);
@@ -212,6 +213,32 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Vorschau: Platz für ladende Bilder freigehalten", peek1.ph === 2, `${peek1.ph} Platzhalter`);
   ok("Vorschau: Bilder nachgeladen ohne Verschieben", peek2.same && peek2.poster && peek2.thumb && !peek2.ph && samePos(peek1.title, peek2.title)
     && samePos(peek1.desc, peek2.desc) && samePos(peek1.ep, peek2.ep) && peek1.h === peek2.h, JSON.stringify({ peek1, peek2 }));
+  await page.evaluate(() => { crlfPeekClose(); document.querySelector(".test-pop").remove(); });
+
+  // Vorschau öffnet sofort aus der Karte (ohne auf die Seite zu warten); kommt deren Vorschau, wird ergänzt statt neu gebaut
+  const card2 = page.locator(".crlf-item:visible").nth(5);
+  await card2.scrollIntoViewIfNeeded();
+  const box2 = await card2.boundingBox();
+  await page.mouse.move(box2.x + 5, box2.y + 5);
+  await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 3 });
+  await page.waitForTimeout(700);
+  const early1 = await page.evaluate(() => ({ open: !!crlfPeekEl, early: !!crlfPeekEl?._crlfData?.early, ...(crlfPeekEl ? window.__pos() : {}) }));
+  const early2 = await page.evaluate(async () => {
+    const before = crlfPeekEl;
+    const card = crlfHoverCard;
+    const pop = document.createElement("div");
+    pop.style.cssText = "position:absolute;z-index:50;width:300px";
+    pop.innerHTML = `<img src="/slow/poster.png?e${Date.now()}"><h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2>`
+      + `<img src="/slow/thumb.png?e${Date.now()}"><span>1</span><span>Erste Folge</span><button>Fortsetzen</button><button>Auf die Playlist</button>`;
+    card.append(pop);
+    crlfPeek(pop);
+    await new Promise((r) => setTimeout(r, 1200));
+    return { same: before === crlfPeekEl, btn: crlfPeekEl?.querySelector(".crlf-pk-btn")?.textContent, thumb: !!crlfPeekEl?.querySelector(".crlf-pk-thumb img"), ...window.__pos() };
+  });
+  const samePos2 = (a, b) => a && b && Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
+  ok("Vorschau öffnet sofort aus der Karte", early1.open && early1.early, JSON.stringify(early1));
+  ok("Frühe Vorschau mit Daten der Seite ergänzt ohne Verschieben", early2.same && early2.btn === "Fortsetzen" && early2.thumb
+    && samePos2(early1.title, early2.title) && samePos2(early1.ep, early2.ep) && early1.h === early2.h, JSON.stringify({ early1, early2 }));
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));

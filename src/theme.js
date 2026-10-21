@@ -724,7 +724,7 @@ function crlfPeek(pop) {
   const key = [d.name, d.season, d.poster, d.thumb, d.epTitle, d.progress, d.desc.length].join("|");
   if (crlfPeekEl && crlfPeekEl.isConnected && key === crlfPeekKey) { crlfPlacePeek(); return true; }
   // gleiche Vorschau, nur Bild/Folge nachgeladen: in den freigehaltenen Platz einsetzen statt neu bauen (kein Springen)
-  if (crlfPeekEl && crlfPeekEl.isConnected && crlfPeekFill(crlfPeekEl, d)) { crlfPeekKey = key; crlfPlacePeek(); return true; }
+  if (crlfPeekEl && crlfPeekEl.isConnected && (crlfPeekUpgrade(crlfPeekEl, d, card) || crlfPeekFill(crlfPeekEl, d))) { crlfPeekKey = key; crlfPlacePeek(); return true; }
   crlfPeekBuild(d, key);
   return true;
 }
@@ -739,7 +739,8 @@ function crlfPeekBuild(d, key) {
   panel.setAttribute("aria-label", T("Vorschau: {0}", d.name));
   const top = el("div", "crlf-pk-top");
   // Poster/Folgenbild noch nicht geladen: Platz in fester Größe freihalten, damit später nichts verrutscht
-  const waitPoster = !d.poster && d.pending.length > 0, waitThumb = !d.thumb && d.pending.length > (waitPoster ? 1 : 0);
+  // (frühe Vorschau aus der Karte: Folgenbild kommt erst mit der Vorschau der Seite)
+  const waitPoster = !d.poster && (d.pending.length > 0 || d.early), waitThumb = !d.thumb && (d.pending.length > (waitPoster ? 1 : 0) || (d.early && d.epNo));
   if (d.poster) { const im = el("img", "crlf-pk-poster"); im.src = d.poster; im.alt = ""; top.append(im); }
   else if (waitPoster) top.append(el("div", "crlf-pk-poster crlf-pk-ph"));
   const info = el("div", "crlf-pk-info");
@@ -750,23 +751,7 @@ function crlfPeekBuild(d, key) {
     h.append(" ", b);
   }
   info.append(h, crlfRatingBox(d.name, d.url));
-  if (d.buttons.length) {
-    const row = el("div", "crlf-pk-btns");
-    d.buttons.slice(0, 3).forEach((b, i) => {
-      const btn = el("button", "crlf-pk-btn" + (i === 0 ? " crlf-pk-primary" : ""), b.label);
-      btn.type = "button";
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        // die Original-Vorschau ist evtl. schon zu: dann über den Link gehen (Abspielen: Folge der Karte, Playlist: Serienseite)
-        if (b.el && b.el.isConnected && crlfPopOpen(crlfPeekSrc)) { b.el.click(); return; }
-        const card = crlfPeekCard && crlfPeekCard.querySelector('a[href*="/watch/"]');
-        const href = b.href || (b.play ? card && card.href : d.url) || d.url;
-        if (href) location.href = href;
-      });
-      row.append(btn);
-    });
-    info.append(row);
-  }
+  if (d.buttons.length) info.append(crlfPeekButtons(d));
   top.append(info);
   panel.append(top);
   if (crlfTouch) {
@@ -804,11 +789,11 @@ function crlfPeekBuild(d, key) {
     // Fortschrittsbalken unter dem Bild, so breit wie das Bild (wie auf der Crunchyroll-Seite)
     const shot = el("div", "crlf-pk-shot");
     shot.append(th);
-    if (d.progress != null) {
-      const pct = Math.round(d.progress * 100);
-      const bar = el("div", "crlf-pk-bar"); bar.title = T("Fortschritt {0} %", pct);
-      const fill = el("i"); fill.style.setProperty("--p", `${pct}%`);
-      bar.append(fill); shot.append(bar);
+    if (d.progress != null || d.early) {
+      const bar = el("div", "crlf-pk-bar");
+      bar.append(el("i"));
+      crlfPeekBar(bar, d.progress);
+      shot.append(bar);
     }
     const txt = el("div", "crlf-pk-eptext");
     crlfPeekEpText(txt, d);
@@ -816,6 +801,7 @@ function crlfPeekBuild(d, key) {
     panel.append(ep);
   }
   panel._crlfData = d;
+  panel._crlfCard = crlfHoverCard;
   document.documentElement.appendChild(panel);
   crlfPeekEl = panel;
   crlfPeekCard = crlfHoverCard;
@@ -843,6 +829,36 @@ function crlfPeekBuild(d, key) {
   }, 120);
 }
 
+// Fortschrittsbalken unter dem Folgenbild; ohne Wert unsichtbar, hält aber den Platz (frühe Vorschau)
+function crlfPeekBar(bar, progress) {
+  bar.style.visibility = progress == null ? "hidden" : "";
+  const pct = Math.round((progress || 0) * 100);
+  bar.title = T("Fortschritt {0} %", pct);
+  bar.firstChild.style.setProperty("--p", `${pct}%`);
+}
+
+// Knöpfe der Vorschau (Abspielen/Fortsetzen, Playlist …)
+function crlfPeekButtons(d) {
+  const row = document.createElement("div");
+  row.className = "crlf-pk-btns";
+  d.buttons.slice(0, 3).forEach((b, i) => {
+    const btn = document.createElement("button");
+    btn.className = "crlf-pk-btn" + (i === 0 ? " crlf-pk-primary" : "");
+    btn.textContent = b.label;
+    btn.type = "button";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      // die Original-Vorschau ist evtl. schon zu: dann über den Link gehen (Abspielen: Folge der Karte, Playlist: Serienseite)
+      if (b.el && b.el.isConnected && crlfPopOpen(crlfPeekSrc)) { b.el.click(); return; }
+      const card = crlfPeekCard && crlfPeekCard.querySelector('a[href*="/watch/"]');
+      const href = b.href || (b.play ? card && card.href : d.url) || d.url;
+      if (href) location.href = href;
+    });
+    row.append(btn);
+  });
+  return row;
+}
+
 // Folgennummer und -titel neben dem Folgenbild
 function crlfPeekEpText(txt, d) {
   txt.textContent = "";
@@ -855,10 +871,14 @@ function crlfPeekEpText(txt, d) {
 // false = passt nicht (anderer Anime, Text geändert oder kein Platz frei) -> neu bauen
 function crlfPeekFill(panel, d) {
   const old = panel._crlfData;
-  if (!old || old.name !== d.name || old.season !== d.season || old.desc.length !== d.desc.length || old.progress !== d.progress) return false;
-  const ph = panel.querySelector("div.crlf-pk-poster.crlf-pk-ph"), ep = panel.querySelector(".crlf-pk-ep.crlf-pk-ph");
-  if (d.poster !== old.poster && !(ph && !old.poster)) return false;
-  if (d.thumb !== old.thumb && !(ep && !old.thumb)) return false;
+  if (!old || old.name !== d.name || old.season !== d.season || old.desc.length !== d.desc.length) return false;
+  const ph = panel.querySelector("div.crlf-pk-poster.crlf-pk-ph");
+  // schon gezeigte Bilder bleiben (auch wenn die Seite eine andere Größe desselben Bildes liefert); neu bauen nur, wenn kein Platz da ist
+  if (d.poster && !ph && !panel.querySelector("img.crlf-pk-poster")) return false;
+  if (d.thumb && !panel.querySelector(".crlf-pk-ep")) return false;
+  const bar = panel.querySelector(".crlf-pk-bar");
+  if (d.progress != null && d.progress !== old.progress && !bar) return false;
+  if (bar && d.progress != null) crlfPeekBar(bar, d.progress);
   if (d.poster && ph) {
     const im = document.createElement("img"); im.className = "crlf-pk-poster"; im.alt = ""; im.src = d.poster;
     im.addEventListener("load", crlfPlacePeek);
@@ -866,11 +886,11 @@ function crlfPeekFill(panel, d) {
   }
   const ex = panel.querySelector(".crlf-pk-ep");
   if (ex) {
-    if (d.thumb && ep) {
+    if (d.thumb && !ex.querySelector(".crlf-pk-thumb img")) {
       const im = document.createElement("img"); im.alt = ""; im.src = d.thumb;
       im.addEventListener("load", crlfPlacePeek);
       ex.querySelector(".crlf-pk-thumb").prepend(im);
-      ep.classList.remove("crlf-pk-ph");
+      ex.classList.remove("crlf-pk-ph");
     }
     const th = ex.querySelector(".crlf-pk-thumb");
     let b = th.querySelector("b");
@@ -878,8 +898,80 @@ function crlfPeekFill(panel, d) {
     if (b) { if (d.epNo) b.textContent = d.epNo; else b.remove(); }
     crlfPeekEpText(ex.querySelector(".crlf-pk-eptext"), d);
   }
-  panel._crlfData = d;
+  panel._crlfData = { ...d, progress: d.progress ?? old.progress };
   return true;
+}
+
+// Frühe Vorschau (aus der Karte gebaut, bevor die Seite ihre eigene zeigt) mit den Daten der Seite ergänzen:
+// Knöpfe, Folgenbild, Folgentitel, Fortschritt. Alles hat schon seinen Platz, es verschiebt sich nichts.
+function crlfPeekUpgrade(panel, d, card) {
+  const old = panel._crlfData;
+  if (!old || !old.early || panel._crlfCard !== card) return false;
+  const sid = (u) => ((String(u || "").match(/\/series\/([A-Z0-9]+)/i) || [])[1] || "").toUpperCase();
+  if (sid(old.url) && sid(d.url) && sid(old.url) !== sid(d.url)) return false;
+  const ph = panel.querySelector("div.crlf-pk-poster.crlf-pk-ph");
+  if (ph && d.poster) {
+    const im = document.createElement("img"); im.className = "crlf-pk-poster"; im.alt = ""; im.src = d.poster;
+    im.addEventListener("load", crlfPlacePeek);
+    ph.replaceWith(im);
+  }
+  const btns = panel.querySelector(".crlf-pk-btns");
+  if (btns && d.buttons.length) btns.replaceWith(crlfPeekButtons(d));
+  else if (!btns && d.buttons.length) panel.querySelector(".crlf-pk-info").append(crlfPeekButtons(d));
+  const p = panel.querySelector(".crlf-pk-desc");
+  if (p && !p.textContent && d.desc) { p.textContent = d.desc; p.hidden = false; }
+  const ep = panel.querySelector(".crlf-pk-ep");
+  if (ep) {
+    const th = ep.querySelector(".crlf-pk-thumb");
+    if (d.thumb && !th.querySelector("img")) {
+      const im = document.createElement("img"); im.alt = ""; im.src = d.thumb;
+      im.addEventListener("load", crlfPlacePeek);
+      th.prepend(im);
+      ep.classList.remove("crlf-pk-ph");
+    }
+    const bar = ep.querySelector(".crlf-pk-bar");
+    if (bar && d.progress != null) crlfPeekBar(bar, d.progress);
+    const epNo = d.epNo || old.epNo;
+    let b = th.querySelector("b");
+    if (epNo && !b) { b = document.createElement("b"); th.append(b); }
+    if (b) b.textContent = epNo;
+    crlfPeekEpText(ep.querySelector(".crlf-pk-eptext"), { ...d, epNo });
+  }
+  // weitere Nachlieferungen (Bilder) laufen wie bei einer normalen Vorschau über crlfPeekFill
+  panel._crlfData = { ...d, desc: d.desc || old.desc, progress: d.progress ?? old.progress };
+  return true;
+}
+
+// Vorschau schon beim Überfahren aus der Karte zeigen, statt auf die (verzögerte) Vorschau der Seite zu warten.
+// Beschreibung kommt von der Serienseite (vorgeladen); Knöpfe/Folgenbild ergänzt crlfPeekUpgrade, sobald die Seite sie liefert.
+let crlfEarlyT = 0, crlfEarlyCard = null;
+function crlfPeekEarly(card) {
+  if (card === crlfEarlyCard || (crlfPeekEl && crlfPeekCard === card)) return; // läuft schon bzw. ist schon offen
+  clearTimeout(crlfEarlyT);
+  crlfEarlyCard = card;
+  crlfEarlyT = setTimeout(async () => {
+    crlfEarlyCard = null;
+    if (crlfHoverCard !== card || !card.isConnected || !crlfWithin(card, 2) || (crlfPeekEl && crlfPeekCard === card)) return;
+    if (!document.documentElement.classList.contains("crlf-themed")) return;
+    const d = crlfPeekFromCard(card);
+    if (!d) return;
+    // Bild der Karte: Hochformat = Poster, Querformat = Folgenbild
+    const img = d.poster && [...card.querySelectorAll("img")].map(crlfImgInfo).find((o) => o.src === d.poster);
+    if (img && img.w > img.h) { d.thumb = d.poster; d.poster = null; }
+    const line = [...card.querySelectorAll("*")].find((e) => !e.closest(".crlf-actions") && /(Folgen?|Episoden?|Episodes?)\s*\d/i.test(e.textContent) && e.textContent.length < 60);
+    d.epNo = line ? (line.textContent.match(/(?:Folgen?|Episoden?|Episodes?)\s*(\d+)/i) || [])[1] || "" : "";
+    const pr = card.querySelector("progress");
+    if (pr && pr.max > 0 && pr.value > 0) d.progress = Math.min(1, pr.value / pr.max);
+    d.early = true;
+    d.fromCard = false;
+    // Beschreibung kurz abwarten (meist schon vorgeladen), damit die Vorschau nicht nachträglich wächst
+    if (d.url) d.desc = (await Promise.race([crlfFullDesc(d.url, ""), new Promise((r) => setTimeout(r, 300, null))])) || "";
+    if (crlfHoverCard !== card || !card.isConnected || !crlfWithin(card, 2) || (crlfPeekEl && crlfPeekCard === card)) return;
+    if (!d.desc && d.url) d.fromCard = true; // kommt sie doch noch, wird sie nachgetragen
+    crlfPeekSrc = null;
+    crlfLastPeek = { name: d.name, card };
+    crlfPeekBuild(d, `early|${d.name}`);
+  }, 180);
 }
 
 // Vorschau-Daten direkt aus einer Kalenderkarte (Handy: die Seite zeigt ohne Maus keine eigene Vorschau)
@@ -1005,6 +1097,7 @@ addEventListener("mouseover", (e) => {
   if (crlfPeekEl && crlfPeekCard && card !== crlfPeekCard) crlfPeekClose();
   if (card !== crlfHoverCard && !crlfTouch) { crlfHoldScrollFor(card); crlfPrefetch(card); }
   crlfHoverCard = card;
+  if (!crlfTouch) crlfPeekEarly(card);
 }, true);
 
 // Daten der Vorschau schon beim Überfahren laden (Serienseite, AniList), damit sie gleich vollständig erscheint
