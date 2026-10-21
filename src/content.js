@@ -24,6 +24,13 @@ let nextIndex = 0; // ursprüngliche Reihenfolge der Einträge (data-crlf-index)
 // Jeder Kalendereintrag ist ein <article class="release">; Titel steht in .season-name / cite.
 // Fallback-Selektoren, falls Crunchyroll das Markup ändert.
 const RELEASE_SELECTOR = "article.release, .js-release, [itemtype*='TVEpisode']";
+
+// Werte nur schreiben, wenn sie sich ändern: jedes Schreiben (auch derselbe Wert) ist eine Änderung der Seite, die
+// alle Beobachter (Design, Vorschau, Einblendungen …) erneut aufweckt
+const addCls = (el, ...cls) => { for (const c of cls) if (!el.classList.contains(c)) el.classList.add(c); };
+const setData = (el, k, v) => { v = String(v); if (el.dataset[k] !== v) el.dataset[k] = v; };
+const setHidden = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
+const setAttr = (el, k, v) => { v = String(v); if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
 const TITLE_SELECTOR = ".season-name cite, .season-name, cite[itemprop='name'], [itemprop='name'], h1, h2, h3";
 const RANK = { fav: 0, none: 1, dim: 2 }; // Sortierung: ★ oben, ▼ unten
 
@@ -162,12 +169,12 @@ function ensureButtons(release, key) {
     }
     placeBar(release, bar);
   } else if (!bar.dataset.placed) placeBar(release, bar);
-  bar.dataset.key = key;
+  setData(bar, "key", key);
   placeTalk(release, bar);
-  bar.querySelector(".crlf-btn-fav").hidden = !settings.featureFav;
-  bar.querySelector(".crlf-btn-dim").hidden = !settings.featureDim;
+  setHidden(bar.querySelector(".crlf-btn-fav"), !settings.featureFav);
+  setHidden(bar.querySelector(".crlf-btn-dim"), !settings.featureDim);
   const talkBtn = release.querySelector(".crlf-btn-talk");
-  if (talkBtn) talkBtn.hidden = !settings.featureComments;
+  if (talkBtn) setHidden(talkBtn, !settings.featureComments);
   bar.querySelector(".crlf-btn-fav").classList.toggle("crlf-on", marks[key] === "fav");
   bar.querySelector(".crlf-btn-dim").classList.toggle("crlf-on", marks[key] === "dim");
 }
@@ -204,9 +211,9 @@ function placeTalk(release, bar) {
   }
   const line = release.querySelector(".crlf-epline") || episodeLine(release);
   if (line) {
-    line.classList.add("crlf-epline");
+    addCls(line, "crlf-epline");
     if (settings.active) trimAvailable(line);
-    talk.classList.remove("crlf-talk-float");
+    if (talk.classList.contains("crlf-talk-float")) talk.classList.remove("crlf-talk-float");
     if (talk.parentElement !== line) line.appendChild(talk);
   } else if (!talk.classList.contains("crlf-talk-float") || !talk.parentElement) {
     talk.classList.add("crlf-talk-float");
@@ -669,23 +676,22 @@ function markDays(lists) {
   const counts = new Map();
   for (const l of lists) for (let p = l.parentElement; p; p = p.parentElement) counts.set(p, (counts.get(p) || 0) + 1);
   for (const l of lists) {
-    l.classList.add("crlf-daypath");
+    const path = [l];
     let c = l;
-    while (c.parentElement && c.parentElement !== document.body && counts.get(c.parentElement) === 1) {
-      c = c.parentElement;
-      c.classList.add("crlf-daypath");
-    }
+    while (c.parentElement && c.parentElement !== document.body && counts.get(c.parentElement) === 1) path.push(c = c.parentElement);
+    if (c !== l) path.pop(); // oberstes Element ist die Tagesspalte, nicht Teil des Pfads
+    path.forEach((e) => addCls(e, "crlf-daypath"));
     if (c !== l) {
-      c.classList.remove("crlf-daypath");
-      c.classList.add("crlf-day");
+      if (c.classList.contains("crlf-daypath")) c.classList.remove("crlf-daypath");
+      addCls(c, "crlf-day");
       // Tageskopf (Datum, Wochentag) = alles in der Spalte außerhalb des Pfads zur Liste
       for (let p = l; p !== c; p = p.parentElement)
-        for (const sib of p.parentElement.children) if (sib !== p && !sib.classList.contains("crlf-daypath") && !sib.classList.contains("crlf-nofav")) sib.classList.add("crlf-dayhead");
+        for (const sib of p.parentElement.children) if (sib !== p && !sib.classList.contains("crlf-daypath") && !sib.classList.contains("crlf-nofav")) addCls(sib, "crlf-dayhead");
     }
   }
   // Hüllen zwischen Seite und Kalender: werden bei gewähltem Hintergrund durchsichtig
   const first = lists.values().next().value;
-  for (let p = first && first.parentElement; p && p !== document.body; p = p.parentElement) p.classList.add("crlf-bgpath");
+  for (let p = first && first.parentElement; p && p !== document.body; p = p.parentElement) addCls(p, "crlf-bgpath");
 }
 
 // Hervorgehobene nach oben (abschaltbar: Einstellung „favTop“), ausgegraute nach unten; sonst ursprüngliche Reihenfolge
@@ -740,27 +746,27 @@ function updateTools(releases) {
     box.append(rank, fav, today);
     document.body.appendChild(box);
   }
-  box.hidden = false;
+  setHidden(box, false);
   const key = (k) => (settings.hotkeys ? ` (${k})` : ""); // Kürzel im Tooltip, wenn eingeschaltet
-  box.querySelector(".crlf-tool-today").title = T("Zu heute springen") + key("H");
+  setAttr(box.querySelector(".crlf-tool-today"), "title", T("Zu heute springen") + key("H"));
   const rb = box.querySelector(".crlf-tool-rank");
-  rb.title = T("Top 10 der Season") + key("T");
-  rb.hidden = !settings.featureRank;
+  setAttr(rb, "title", T("Top 10 der Season") + key("T"));
+  setHidden(rb, !settings.featureRank);
   if (!settings.featureRank && commentPanel && commentPanel.classList.contains("crlf-rpanel")) closeComments();
   const favOk = !!settings.featureFav;
   const nFav = favOk ? releases.filter((r) => releaseContainer(r).classList.contains("crlf-fav")).length : 0;
   const only = !!settings.onlyFav && favOk;
   document.documentElement.classList.toggle("crlf-onlyfav", only);
   const fb = box.querySelector(".crlf-tool-fav");
-  fb.hidden = !favOk;
+  setHidden(fb, !favOk);
   fb.classList.toggle("crlf-on", only);
-  fb.setAttribute("aria-pressed", only);
-  fb.title = (only ? T("Wieder alle Anime zeigen") : nFav ? T("Nur Favoriten (★) zeigen") : T("Nur Favoriten (★) zeigen – noch keine markiert")) + key("F");
+  setAttr(fb, "aria-pressed", only);
+  setAttr(fb, "title", (only ? T("Wieder alle Anime zeigen") : nFav ? T("Nur Favoriten (★) zeigen") : T("Nur Favoriten (★) zeigen – noch keine markiert")) + key("F"));
   const day = todayStr();
-  for (const el of document.querySelectorAll(".crlf-today")) el.classList.remove("crlf-today");
   const hit = releases.find((r) => releaseDay(r) === day);
   const col = hit && releaseContainer(hit).closest(".crlf-day");
-  if (col) col.classList.add("crlf-today");
+  for (const el of document.querySelectorAll(".crlf-today")) if (el !== col) el.classList.remove("crlf-today");
+  if (col) addCls(col, "crlf-today");
 }
 
 // Tastenkürzel (Einstellung „hotkeys“): H = Heute, F = nur Favoriten, T = Top 10 – lösen die Knöpfe unten rechts aus.
@@ -817,8 +823,8 @@ function applyFilterNow() {
     const mark = activeMark(key);
     const container = releaseContainer(release);
     ensureButtons(release, key);
-    container.dataset.crlfMark = mark;
-    container.classList.add("crlf-item");
+    setData(container, "crlfMark", mark);
+    addCls(container, "crlf-item");
     container.classList.toggle("crlf-fav", mark === "fav");
     // Vorschaubilder: bei allen, nur bei Favoriten (Standard) oder bei keinem (auch die der Seite verstecken)
     const thumbs = settings.thumbs;
