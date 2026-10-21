@@ -33,7 +33,11 @@ function crlfDiagReport() {
   }
   const cards = document.querySelectorAll("article.release, .js-release").length;
   console.log(`BetterRoll-Diagnose (letzte 10 s, ${cards} Karten): ${crlfDiagLong.n} lange Blockaden, zusammen ${Math.round(crlfDiagLong.sum)} ms, längste ${Math.round(crlfDiagLong.max)} ms`);
-  if (Object.keys(rows).length) console.table(rows);
+  if (Object.keys(rows).length) {
+    console.table(rows);
+    // dieselben Werte als Text (manche Werkzeuge zeigen den Inhalt der Tabelle nicht)
+    console.log(Object.entries(rows).map(([k, r]) => `${k}: ${r.Anzahl}× · ${r["gesamt ms"]} ms · Ø ${r["Ø ms"]} · max ${r["max ms"]}`).join("\n"));
+  }
   crlfDiagStats = new Map();
   crlfDiagLong = { n: 0, sum: 0, max: 0 };
 }

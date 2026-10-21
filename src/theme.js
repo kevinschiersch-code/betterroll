@@ -1211,8 +1211,9 @@ function crlfStart() {
   let changed = new Set();
   let scheduled = false;
   const flush = () => crlfTime("Design: neue Teile einfärben", flushNow);
-  // Vorschau der Seite, die durch die eigene Vorschau-Karte ersetzt und unsichtbar ist: nicht einfärben
-  const visible = (n) => n.isConnected && !n.closest("[data-crlf-hidepop]");
+  // Vorschau der Seite, die durch die eigene Vorschau-Karte ersetzt und unsichtbar ist (auch .qtip, siehe theme.css):
+  // nicht einfärben
+  const visible = (n) => n.isConnected && !n.closest("[data-crlf-hidepop], .qtip");
   const flushNow = () => {
     scheduled = false;
     // zuerst die Vorschau der Seite suchen: wird sie übernommen (unsichtbar), entfällt ihr Einfärben
