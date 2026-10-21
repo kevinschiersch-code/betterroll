@@ -766,18 +766,16 @@ function crlfPeekBuild(d, key) {
     x.addEventListener("click", crlfPeekClose);
     panel.append(x);
   }
-  // Beschreibung ganz unten: kommt sie später, wächst die Vorschau nur nach unten, nichts darüber verschiebt sich
-  const descBox = document.createDocumentFragment();
-  // Vorschau aus der Karte (Handy): Beschreibung erst von der Serienseite holen
-  if (!d.desc && d.url && d.fromCard) {
-    const p = el("p", "crlf-pk-desc");
-    p.hidden = true;
-    descBox.append(p);
-    crlfFullDesc(d.url, "").then((full) => { if (full && p.isConnected) { p.textContent = full; p.hidden = false; } });
+  // Beschreibung noch nicht da: Platzhalter in fester Höhe (die Vorschau behält ihre Größe), Text kommt von der
+  // Serienseite bzw. der Einblendung der Seite (crlfPeekUpgrade)
+  if (!d.desc && d.url && (d.fromCard || d.early)) {
+    const p = el("p", "crlf-pk-desc crlf-pk-ph");
+    panel.append(p);
+    crlfFullDesc(d.url, "").then((full) => { if (full && p.isConnected && !p.textContent) { p.textContent = full; p.classList.remove("crlf-pk-ph"); } });
   }
   if (d.desc) {
     const p = el("p", "crlf-pk-desc", d.desc);
-    descBox.append(p);
+    panel.append(p);
     // gekürzte Beschreibung: kurz unsichtbar warten, bis die volle da ist, damit die Vorschau nicht nachträglich wächst
     if (/(…|\.\.\.)\s*$/.test(d.desc)) {
       panel.style.visibility = "hidden";
@@ -807,7 +805,6 @@ function crlfPeekBuild(d, key) {
     ep.append(shot, txt);
     panel.append(ep);
   }
-  panel.append(descBox);
   panel._crlfData = d;
   panel._crlfEarly = !!d.early;
   panel._crlfCard = crlfHoverCard;
@@ -927,7 +924,7 @@ function crlfPeekUpgrade(panel, d, card) {
   if (btns && d.buttons.length) btns.replaceWith(crlfPeekButtons(d));
   else if (!btns && d.buttons.length) panel.querySelector(".crlf-pk-info").append(crlfPeekButtons(d));
   const p = panel.querySelector(".crlf-pk-desc");
-  if (p && !p.textContent && d.desc) { p.textContent = d.desc; p.hidden = false; }
+  if (p && !p.textContent && d.desc) { p.textContent = d.desc; p.classList.remove("crlf-pk-ph"); }
   const ep = panel.querySelector(".crlf-pk-ep");
   if (ep) {
     const th = ep.querySelector(".crlf-pk-thumb");
@@ -1211,9 +1208,8 @@ function crlfStart() {
   let changed = new Set();
   let scheduled = false;
   const flush = () => crlfTime("Design: neue Teile einfärben", flushNow);
-  // Vorschau der Seite, die durch die eigene Vorschau-Karte ersetzt und unsichtbar ist (auch .qtip, siehe theme.css):
-  // nicht einfärben
-  const visible = (n) => n.isConnected && !n.closest("[data-crlf-hidepop], .qtip");
+  // Vorschau der Seite, die durch die eigene Vorschau-Karte ersetzt und unsichtbar ist: nicht einfärben
+  const visible = (n) => n.isConnected && !n.closest("[data-crlf-hidepop]");
   const flushNow = () => {
     scheduled = false;
     // zuerst die Vorschau der Seite suchen: wird sie übernommen (unsichtbar), entfällt ihr Einfärben

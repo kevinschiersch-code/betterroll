@@ -229,7 +229,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const pop = document.createElement("div");
     pop.style.cssText = "position:absolute;z-index:50;width:300px";
     pop.innerHTML = `<img src="/slow/poster.png?e${Date.now()}"><h2 style="font-size:20px">${card.querySelector("cite").textContent}</h2>`
-      + `<p>Die Beschreibung kommt erst mit der Einblendung der Seite und steht ganz unten.</p><img src="/slow/thumb.png?e${Date.now()}"><span>1</span><span>Erste Folge</span><button>Fortsetzen</button><button>Auf die Playlist</button>`;
+      + `<p>Die Beschreibung kommt erst mit der Einblendung der Seite, ihr Platz ist schon frei.</p><img src="/slow/thumb.png?e${Date.now()}"><span>1</span><span>Erste Folge</span><button>Fortsetzen</button><button>Auf die Playlist</button>`;
     card.append(pop);
     crlfPeek(pop);
     await new Promise((r) => setTimeout(r, 1200));
@@ -238,7 +238,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const samePos2 = (a, b) => a && b && Math.abs(a.left - b.left) < 1 && Math.abs(a.top - b.top) < 1;
   ok("Vorschau öffnet sofort aus der Karte", early1.open && early1.early, JSON.stringify(early1));
   ok("Frühe Vorschau mit Daten der Seite ergänzt ohne Verschieben", early2.same && early2.btn === "Fortsetzen" && early2.thumb
-    && samePos2(early1.title, early2.title) && samePos2(early1.ep, early2.ep) && early2.desc && early2.desc.top > early2.ep.top, JSON.stringify({ early1, early2 }));
+    && samePos2(early1.title, early2.title) && samePos2(early1.ep, early2.ep) && samePos2(early1.desc, early2.desc) && early1.h === early2.h, JSON.stringify({ early1, early2 }));
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
