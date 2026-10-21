@@ -689,7 +689,7 @@ function crlfPopOpen(pop) {
   if (!pop || !pop.isConnected || !pop.getClientRects().length) return false;
   for (let p = pop.parentElement; p && p !== document.body; p = p.parentElement) {
     const cs = getComputedStyle(p);
-    if (cs.visibility === "hidden" || parseFloat(cs.opacity) < 0.1 || cs.display === "none") return false;
+    if (cs.visibility === "hidden" || (parseFloat(cs.opacity) < 0.1 && !p.matches(".qtip")) || cs.display === "none") return false;
   }
   return true;
 }
@@ -766,16 +766,18 @@ function crlfPeekBuild(d, key) {
     x.addEventListener("click", crlfPeekClose);
     panel.append(x);
   }
+  // Beschreibung ganz unten: kommt sie später, wächst die Vorschau nur nach unten, nichts darüber verschiebt sich
+  const descBox = document.createDocumentFragment();
   // Vorschau aus der Karte (Handy): Beschreibung erst von der Serienseite holen
   if (!d.desc && d.url && d.fromCard) {
     const p = el("p", "crlf-pk-desc");
     p.hidden = true;
-    panel.append(p);
+    descBox.append(p);
     crlfFullDesc(d.url, "").then((full) => { if (full && p.isConnected) { p.textContent = full; p.hidden = false; } });
   }
   if (d.desc) {
     const p = el("p", "crlf-pk-desc", d.desc);
-    panel.append(p);
+    descBox.append(p);
     // gekürzte Beschreibung: kurz unsichtbar warten, bis die volle da ist, damit die Vorschau nicht nachträglich wächst
     if (/(…|\.\.\.)\s*$/.test(d.desc)) {
       panel.style.visibility = "hidden";
@@ -805,7 +807,9 @@ function crlfPeekBuild(d, key) {
     ep.append(shot, txt);
     panel.append(ep);
   }
+  panel.append(descBox);
   panel._crlfData = d;
+  panel._crlfEarly = !!d.early;
   panel._crlfCard = crlfHoverCard;
   document.documentElement.appendChild(panel);
   crlfPeekEl = panel;
@@ -911,9 +915,8 @@ function crlfPeekFill(panel, d) {
 // Knöpfe, Folgenbild, Folgentitel, Fortschritt. Alles hat schon seinen Platz, es verschiebt sich nichts.
 function crlfPeekUpgrade(panel, d, card) {
   const old = panel._crlfData;
-  if (!old || !old.early || panel._crlfCard !== card) return false;
-  const sid = (u) => ((String(u || "").match(/\/series\/([A-Z0-9]+)/i) || [])[1] || "").toUpperCase();
-  if (sid(old.url) && sid(d.url) && sid(old.url) !== sid(d.url)) return false;
+  // gilt, solange die Vorschau offen ist (die Seite füllt ihre Einblendung oft in mehreren Schritten)
+  if (!old || !panel._crlfEarly || panel._crlfCard !== card) return false;
   const ph = panel.querySelector("div.crlf-pk-poster.crlf-pk-ph");
   if (ph && d.poster) {
     const im = document.createElement("img"); im.className = "crlf-pk-poster"; im.alt = ""; im.src = d.poster;
@@ -1115,7 +1118,7 @@ function crlfPrefetch(card) {
     if (!d || !d.url) return;
     crlfSeriesPage(d.url);
     crlfRatingBox(d.name, d.url); // startet nur die Abrufe; Ergebnisse landen im Zwischenspeicher
-  }, 120);
+  }, 60);
 }
 
 // Karte nur halb im Bild: die Seite scrollt sie beim Überfahren selbst ins Bild, alles springt. Solches Scrollen ohne

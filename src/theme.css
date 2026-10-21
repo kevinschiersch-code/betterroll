@@ -312,6 +312,8 @@ html.crlf-themed.crlf-bg .crlf-dayhead { border-color: var(--crlf-accent) !impor
 html.crlf-themed { --crlf-pop-bg: var(--crlf-surface); }
 html.crlf-themed.crlf-dark.crlf-bg-aurora, html.crlf-themed.crlf-dark.crlf-bg-glow, html.crlf-themed.crlf-dark.crlf-bg-grid, html.crlf-themed.crlf-dark.crlf-bg-banner, html.crlf-themed.crlf-dark.crlf-bg-video { --crlf-pop-bg: color-mix(in srgb, var(--crlf-bg) 90%, var(--crlf-accent)); }
 html.crlf-themed [data-crlf-hidepop] { opacity: 0 !important; pointer-events: none !important; }
+/* Einblendung der Seite (qTip) nie zeigen: die eigene Vorschau-Karte ersetzt sie (sonst blitzt sie kurz dahinter auf) */
+html.crlf-themed .qtip { opacity: 0 !important; }
 .crlf-peek {
   position: fixed; top: 8px; left: 8px; z-index: 2147483500; width: 440px; max-width: calc(100vw - 16px);
   overflow: visible; pointer-events: auto; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 12px;
