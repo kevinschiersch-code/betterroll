@@ -103,29 +103,30 @@ const CRLF_SKIP = "img, svg, video, picture, iframe, canvas, #crlf-video, #crlf-
 // Ein Element einmalig einordnen (data-crlf-c merkt „schon erledigt“):
 // crlf-s1/s2 = helle Fläche, crlf-fg/fg2 = dunkler/mittlerer Text, crlf-bd = heller Rahmen, crlf-sh = Schatten,
 // crlf-gr = heller Verlauf, crlf-pb/pa = helle Fläche in ::before/::after
+// Nur lesen: liefert die Klassen; gesetzt werden sie gesammelt in crlfClassifyTree (sonst erzwingt jedes Setzen vor dem
+// nächsten getComputedStyle eine neue Stilberechnung der ganzen Seite)
 function crlfClassify(el) {
-  if (el.dataset.crlfC || el.matches(CRLF_SKIP)) return;
-  el.dataset.crlfC = "1";
+  const add = [];
   const cs = getComputedStyle(el);
   const bg = crlfParse(cs.backgroundColor);
   // nur einfarbige Flächen: Hintergrundbilder (z. B. Vorschaubilder) bleiben unangetastet
   // helle Verläufe (z. B. weiße Ränder/Ausblendungen am Seitenrand) entfernen, echte Bilder (url) behalten
   const gradientOnly = cs.backgroundImage.includes("gradient(") && !cs.backgroundImage.includes("url(");
-  if (gradientOnly) el.classList.add("crlf-gr", "crlf-s1");
+  if (gradientOnly) add.push("crlf-gr", "crlf-s1");
   if (bg && bg.a > 0.5 && bg.gray && (cs.backgroundImage === "none" || gradientOnly)) {
-    if (bg.lum >= 0.97) el.classList.add("crlf-s2");
-    else if (bg.lum >= 0.6) el.classList.add("crlf-s1");
+    if (bg.lum >= 0.97) add.push("crlf-s2");
+    else if (bg.lum >= 0.6) add.push("crlf-s1");
   }
   const fg = crlfParse(cs.color);
   if (fg && fg.gray) {
-    if (fg.lum < 0.3) el.classList.add("crlf-fg");
-    else if (fg.lum < 0.75) el.classList.add("crlf-fg2");
+    if (fg.lum < 0.3) add.push("crlf-fg");
+    else if (fg.lum < 0.75) add.push("crlf-fg2");
   }
   for (const side of ["Top", "Right", "Bottom", "Left"]) {
     const bc = crlfParse(cs[`border${side}Color`]);
-    if (parseFloat(cs[`border${side}Width`]) > 0 && bc && bc.gray && bc.lum > 0.6) { el.classList.add("crlf-bd"); break; }
+    if (parseFloat(cs[`border${side}Width`]) > 0 && bc && bc.gray && bc.lum > 0.6) { add.push("crlf-bd"); break; }
   }
-  if (cs.boxShadow !== "none") el.classList.add("crlf-sh");
+  if (cs.boxShadow !== "none") add.push("crlf-sh");
   // Verläufe/helle Flächen in ::before/::after (z. B. weiße Ränder links/rechts am Kalender)
   for (const [pseudo, cls] of [["::before", "crlf-pb"], ["::after", "crlf-pa"]]) {
     const ps = getComputedStyle(el, pseudo);
@@ -133,36 +134,57 @@ function crlfClassify(el) {
     const pbg = crlfParse(ps.backgroundColor);
     const light = pbg && pbg.a > 0.3 && pbg.gray && pbg.lum > 0.6;
     const grad = ps.backgroundImage.includes("gradient(") && !ps.backgroundImage.includes("url(");
-    if (light || grad || ps.boxShadow !== "none") el.classList.add(cls);
+    if (light || grad || ps.boxShadow !== "none") add.push(cls);
   }
+  return add;
 }
 
-// Element und alle Nachfahren einordnen
-function crlfClassifyTree(root) {
-  if (root.nodeType !== 1) return;
-  crlfClassify(root);
-  root.querySelectorAll("*").forEach(crlfClassify);
+// Teilbäume einordnen (ein Element oder eine Liste): erst alle Farben lesen, dann alle Klassen setzen
+function crlfClassifyTree(roots) {
+  const set = new Set();
+  for (const root of [].concat(roots)) {
+    if (!root || root.nodeType !== 1) continue;
+    for (const el of [root, ...root.querySelectorAll("*")]) if (!el.dataset.crlfC && !el.matches(CRLF_SKIP)) set.add(el);
+  }
+  const els = [...set];
+  const found = els.map(crlfClassify);
+  els.forEach((el, i) => {
+    el.dataset.crlfC = "1";
+    if (found[i].length) el.classList.add(...found[i]);
+  });
 }
 
 // Nach dem Einfärben im Dunkelmodus: Texte, die trotzdem zu dunkel oder fast durchsichtig sind, aufhellen
-function crlfFixContrast(root) {
-  if (!document.documentElement.classList.contains("crlf-dark") || root.nodeType !== 1) return;
-  for (const el of [root, ...root.querySelectorAll("*")]) {
-    if (el.matches(CRLF_SKIP) || el.closest(".crlf-dim, .crlf-hidden")) continue;
-    if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
-    const cs = getComputedStyle(el);
-    // sichtbare Textfarbe: -webkit-text-fill-color hat Vorrang vor color
-    const fg = crlfParse(cs.webkitTextFillColor) || crlfParse(cs.color);
-    const dimmed = (s) => parseFloat(s.opacity) < 0.6 || /opacity|brightness|grayscale/.test(s.filter) || s.mixBlendMode !== "normal";
-    if ((fg && fg.a < 0.5) || dimmed(cs) || crlfLowContrast(el, fg)) el.classList.add("crlf-hi");
-    // blass wirkende Beschriftungen kommen oft von durchsichtigen/gefilterten Hüllen (z. B. ausgewählter Tag,
-    // Menüpunkte in der Kopfleiste): ganze Kette bis zum body prüfen, Hüllen mit Bildern auslassen
-    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-      if (p.classList.contains("crlf-dim")) break;
-      if (p.querySelector("img, video, picture")) continue;
-      if (dimmed(getComputedStyle(p))) p.classList.add("crlf-hi");
+// (ein Element oder eine Liste; erst alles lesen, dann gesammelt crlf-hi setzen)
+function crlfFixContrast(roots) {
+  if (!document.documentElement.classList.contains("crlf-dark")) return;
+  const hi = new Set();
+  const seen = new Set();
+  const dimmed = (s) => parseFloat(s.opacity) < 0.6 || /opacity|brightness|grayscale/.test(s.filter) || s.mixBlendMode !== "normal";
+  const hulls = new Set(); // Hüllen schon geprüft
+  for (const root of [].concat(roots)) {
+    if (!root || root.nodeType !== 1 || !root.isConnected) continue;
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      if (el.matches(CRLF_SKIP) || el.closest(".crlf-dim, .crlf-hidden")) continue;
+      if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+      const cs = getComputedStyle(el);
+      // sichtbare Textfarbe: -webkit-text-fill-color hat Vorrang vor color
+      const fg = crlfParse(cs.webkitTextFillColor) || crlfParse(cs.color);
+      if ((fg && fg.a < 0.5) || dimmed(cs) || crlfLowContrast(el, fg)) hi.add(el);
+      // blass wirkende Beschriftungen kommen oft von durchsichtigen/gefilterten Hüllen (z. B. ausgewählter Tag,
+      // Menüpunkte in der Kopfleiste): ganze Kette bis zum body prüfen, Hüllen mit Bildern auslassen
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (p.classList.contains("crlf-dim")) break;
+        if (hulls.has(p)) continue;
+        hulls.add(p);
+        if (p.querySelector("img, video, picture")) continue;
+        if (dimmed(getComputedStyle(p))) hi.add(p);
+      }
     }
   }
+  for (const el of hi) el.classList.add("crlf-hi");
 }
 
 // Kontrast Text gegen die nächste deckende Hintergrundfläche (im Dunkelmodus)
@@ -1004,11 +1026,11 @@ function crlfStart() {
     const roots = [...changed]; changed = new Set();
     crlfWithOriginalColors(() => {
       // z. B. angeklickter Tag als Reiter: Seite tauscht Klassen, Farben neu erfassen
-      for (const r of roots) if (r.isConnected) { crlfReset(r); crlfClassifyTree(r); }
-      nodes.forEach(crlfClassifyTree);
+      const live = roots.filter((r) => r.isConnected);
+      live.forEach(crlfReset);
+      crlfClassifyTree([...live, ...nodes.filter((n) => n.isConnected)]);
     });
-    roots.forEach(crlfFixContrast);
-    nodes.forEach(crlfFixContrast);
+    crlfFixContrast([...roots, ...nodes]);
     crlfFindPopups();
   };
   new MutationObserver((muts) => {
