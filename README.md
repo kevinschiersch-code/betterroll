@@ -3,6 +3,7 @@
 - `release/` – fertige Pakete, die der BetterRoll-Updater auf Windows abholt
 - `src/` – Quellcode des Add-ons (Stand der zuletzt gebauten Version; kann neuer sein als `release/`)
 - `tools/` – Build-Skript, Installer und Updater (Kopie der Bauumgebung)
+- `tests/` – automatische Tests mit nachgebautem Kalender: `node tests/run.mjs` (Node 18+, Playwright mit Chromium)
 
 ## Updates
 
