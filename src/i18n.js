@@ -137,6 +137,7 @@ var CRLF_EN = {
   "MyAnimeList-Abruf fehlgeschlagen (Fehler {0}).": "MyAnimeList request failed (error {0}).",
   "MyAnimeList nicht erreichbar ({0}).": "MyAnimeList unreachable ({0}).",
   "keine Verbindung": "no connection",
+  "vorübergehend gesperrt": "temporarily blocked",
   "Zeitüberschreitung": "timeout",
   "Folgen {0}–{1}": "Episodes {0}–{1}",
   "Folge {0}": "Episode {0}",

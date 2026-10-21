@@ -31,19 +31,43 @@ function logError(where, msg) {
 }
 const host = (url) => { try { return new URL(url).hostname; } catch (e) { return url; } };
 
+// Pause je Dienst nach Ablehnung oder Ausfall (403, 429, 5xx, keine Verbindung): 5 Min., bei Wiederholung 10/20/30 Min.
+// In der Pause geht keine Anfrage raus, die Antwort ist sofort „vorübergehend gesperrt“. Erfolg hebt die Pause auf.
+// (Nur im Speicher: startet der Hintergrund neu, wird wieder normal gefragt.)
+const PAUSE_MIN = [5, 10, 20, 30];
+const paused = new Map(); // Host -> { until, step }
+function pauseHost(h, why) {
+  const p = paused.get(h);
+  const step = p ? Math.min(p.step + 1, PAUSE_MIN.length - 1) : 0;
+  paused.set(h, { until: Date.now() + PAUSE_MIN[step] * 60000, step });
+  logError(h, `${why} – Pause ${PAUSE_MIN[step]} Min.`);
+}
+
+// Fehlschlag eintragen: Ablehnung/Ausfall -> Pause, sonst nur in die Fehlerliste („nicht gefunden“ ist normal)
+function noteFailure(h, r) {
+  if (r.ok || r.paused || r.status === 404) return;
+  if (r.status === 0 && r.error !== "ungültige Antwort") pauseHost(h, r.error);
+  else if (r.status === 403 || r.status === 429 || r.status >= 500) pauseHost(h, `Antwort ${r.status}${r.status === 429 ? " (zu viele Anfragen)" : ""}`);
+  else logError(h, r.error || `Antwort ${r.status}`);
+}
+
 // Ein Abruf mit 15 s Zeitlimit; Antwort als JSON (bzw. Text bei asText). Fehler kommen als { ok: false, status, error }.
-async function fetchOnce(url, init = {}, asText = false) {
+// final = false: Fehlschlag noch nicht eintragen (fetchRetry versucht es gleich noch einmal)
+async function fetchOnce(url, init = {}, asText = false, final = true) {
+  const h = host(url), p = paused.get(h);
+  if (p && Date.now() < p.until) return { ok: false, status: 0, error: "vorübergehend gesperrt", paused: true };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal });
-    if (!res.ok && res.status !== 404) logError(host(url), `Antwort ${res.status}${res.status === 429 ? " (zu viele Anfragen)" : ""}`);
+    if (res.ok) paused.delete(h);
+    else if (final) noteFailure(h, { ok: false, status: res.status });
     if (asText) return { ok: res.ok, status: res.status, text: res.ok ? await res.text() : "" };
     const json = res.ok ? await res.json() : null;
     return { ok: res.ok, status: res.status, json };
   } catch (e) {
     const error = e.name === "AbortError" ? "Zeitüberschreitung" : e instanceof SyntaxError ? "ungültige Antwort" : "keine Verbindung";
-    logError(host(url), error);
+    if (final) noteFailure(h, { ok: false, status: 0, error });
     return { ok: false, status: 0, error };
   } finally {
     clearTimeout(timer);
@@ -52,8 +76,9 @@ async function fetchOnce(url, init = {}, asText = false) {
 
 // bei Netzfehler, 429 (zu viele Anfragen) oder 5xx nach 1,5 s einmal wiederholen
 async function fetchRetry(url, init) {
-  const r = await fetchOnce(url, init);
-  if (r.ok || !(r.status === 0 || r.status === 429 || r.status >= 500)) return r;
+  const r = await fetchOnce(url, init, false, false);
+  if (r.ok || r.paused) return r;
+  if (!(r.status === 0 || r.status === 429 || r.status >= 500)) { noteFailure(host(url), r); return r; }
   await new Promise((ok) => setTimeout(ok, 1500));
   return fetchOnce(url, init);
 }

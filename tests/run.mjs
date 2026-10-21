@@ -214,6 +214,16 @@ server.close();
   await new Promise((r) => setTimeout(r, 100));
   const e = (store.crErrors || [])[0];
   ok("Hintergrund: Fehler in der Fehlerliste", e && /429/.test(e.msg), e ? `${e.where}: ${e.msg}` : "leer");
+  // Pause nach Ablehnung: keine weitere Anfrage an AniList, andere Dienste unberührt
+  fetches = 0;
+  const p = await ask({ ...q, query: "query{y}" });
+  ok("Hintergrund: Pause nach Ablehnung", fetches === 0 && p.error === "vorübergehend gesperrt", `${fetches} Abrufe, Antwort „${p.error}“`);
+  ctx.fetch = async () => { fetches++; return { ok: false, status: 403, json: async () => null }; };
+  await ask({ type: "crlf-jikan", path: "/x" });
+  ok("Hintergrund: Jikan läuft trotz AniList-Pause, 403 sofort Pause", fetches === 1, `${fetches} Abruf`);
+  fetches = 0;
+  await ask({ type: "crlf-jikan", path: "/y" });
+  ok("Hintergrund: Jikan danach ebenfalls pausiert", fetches === 0);
 }
 
 // ===== Ausgabe =====
