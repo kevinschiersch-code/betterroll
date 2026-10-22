@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "BetterRoll",
-  "version": "1.86.24",
+  "name": "BetterRoll Kalender",
+  "version": "1.87.0",
   "description": "Macht den Crunchyroll-Simulcast-Kalender übersichtlich: Sprachfilter, Favoriten, Poster, Bewertungen und Kommentare. Inoffiziell.",
   "permissions": [
     "storage",
     "nativeMessaging",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -28,6 +29,7 @@
         "https://www.crunchyroll.com/*simulcastcalendar*"
       ],
       "js": [
+        "calbuild.js",
         "diag.js",
         "i18n.js",
         "theme.js",
@@ -86,6 +88,7 @@
     "service_worker": "background.js"
   },
   "host_permissions": [
+    "https://www.crunchyroll.com/*",
     "https://api.jikan.moe/*",
     "https://graphql.anilist.co/*",
     "https://cdn.animenewsnetwork.com/*"
@@ -102,5 +105,14 @@
         "https://www.crunchyroll.com/*"
       ]
     }
-  ]
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "calendar",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
 }

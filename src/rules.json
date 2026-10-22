@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "regexSubstitution": "https://www.crunchyroll.com/robots.txt?simulcastcalendar&p=\\1&\\2"
+      }
+    },
+    "condition": {
+      "regexFilter": "^https://www\\.crunchyroll\\.com/((?:[a-z]{2}(?:-[a-z]{2,3})?/)?)simulcastcalendar/?(?:\\?(.*))?$",
+      "resourceTypes": [
+        "main_frame"
+      ]
+    }
+  }
+]
