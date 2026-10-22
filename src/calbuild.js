@@ -16,7 +16,7 @@
   const rest = q.toString();
   history.replaceState(null, "", `/${loc ? loc + "/" : ""}simulcastcalendar${rest ? "?" + rest : ""}`);
 
-  const CAL_SERIES_TTL = 12 * 36e5, CAL_EPS_TTL = 36e5, CAL_PAR = 6;
+  const CAL_SERIES_TTL = 12 * 36e5, CAL_EPS_TTL = 36e5, CAL_PAR = 8;
   const DUB = { "de-DE": "German", "en-US": "English", "es-419": "Spanish", "es-ES": "Castilian", "pt-BR": "Portuguese", "pt-PT": "Portuguese (Portugal)",
     "fr-FR": "French", "it-IT": "Italian", "ru-RU": "Russian", "ar-SA": "Arabic", "hi-IN": "Hindi", "ta-IN": "Tamil", "te-IN": "Telugu",
     "zh-CN": "Chinese", "zh-HK": "Chinese", "zh-TW": "Chinese", "ko-KR": "Korean", "th-TH": "Thai", "id-ID": "Indonesian", "ms-MY": "Malay",
@@ -76,7 +76,10 @@
       const token = await crlfCatToken();
       const res = await fetch(url, { credentials: "omit", headers: { Authorization: `Bearer ${token}` } });
       if (res.status === 401 && !attempt) { crlfCatTok = null; continue; }
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${url.split("?")[0]}`);
+      if (!res.ok) {
+        const body = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+        throw new Error(`HTTP ${res.status} ${url.split("?")[0]} ${body}`);
+      }
       return res.json();
     }
   };
@@ -99,7 +102,7 @@
 
   async function loadWeek() {
     const locale = crlfCatLocale();
-    const { calCache = {} } = await chrome.storage.local.get("calCache");
+    const { calCache2: calCache = {} } = await chrome.storage.local.get("calCache2");
     const cache = { series: calCache.series || {}, eps: calCache.eps || {} };
     const now = Date.now();
 
@@ -107,15 +110,26 @@
     const prevSeason = new Date(start.getFullYear(), start.getMonth() - 3, 1);
     const tags = [...new Set([seasonTag(start), seasonTag(new Date(end - 1)), seasonTag(prevSeason)])];
     const series = new Map();
+    let lastErr = null;
     for (const tag of tags) {
-      const j = await api(`/content/v2/discover/browse?seasonal_tag=${tag}&n=200&locale=${locale}`);
-      for (const s of (j && j.data) || []) {
+      const found = [];
+      try {
+        for (let off = 0; off < 400; off += 100) {
+          const j = await api(`/content/v2/discover/browse?seasonal_tag=${tag}&n=100&start=${off}&locale=${locale}`);
+          const data = (j && j.data) || [];
+          found.push(...data);
+          if (data.length < 100 || (j.total && off + 100 >= j.total)) break;
+        }
+      } catch (e) { lastErr = e; }
+      for (const s of found) {
         if (!s.id || series.has(s.id)) continue;
         const last = Date.parse(s.last_public || (s.series_metadata && s.series_metadata.last_public) || "");
         if (!isNaN(last) && last < start - 21 * 864e5) continue; // seit Wochen nichts Neues: beendet
         series.set(s.id, s);
       }
     }
+
+    if (!series.size && lastErr) throw lastErr;
 
     // je Serie die neueste Staffel jeder Sprachfassung
     const sids = [...series.keys()];
@@ -125,10 +139,14 @@
       const j = await api(`/content/v2/cms/series/${sid}/seasons?locale=${locale}`);
       const best = new Map();
       for (const s of (j && j.data) || []) {
-        const audio = s.audio_locale || (s.audio_locales && s.audio_locales[0]) || "ja-JP";
         const n = s.season_sequence_number || s.season_number || 0;
-        const o = best.get(audio);
-        if (!o || n > o.n) best.set(audio, { id: s.id, title: s.title || "", audio, n, count: s.number_of_episodes || 0 });
+        // Synchronfassungen stecken als eigene Staffel-IDs in versions[]
+        const vers = Array.isArray(s.versions) && s.versions.length ? s.versions : [{ audio_locale: s.audio_locale, guid: s.id }];
+        for (const v of vers) {
+          const audio = v.audio_locale || "ja-JP", id = v.guid || v.season_guid || s.id;
+          const o = best.get(audio);
+          if (!o || n > o.n) best.set(audio, { id, title: s.title || "", audio, n, num: s.season_number || n, count: s.number_of_episodes || 0 });
+        }
       }
       cache.series[sid] = { t: now, seasons: [...best.values()] };
     });
@@ -142,7 +160,7 @@
       const list = [];
       for (const e of (j && j.data) || []) {
         const d = Date.parse(relDate(e));
-        if (isNaN(d)) continue;
+        if (isNaN(d) || d > now + 30 * 864e5) continue; // Platzhalter wie 9998-11-30 = noch nicht angekündigt
         list.push({ id: e.id, n: e.episode_number != null ? e.episode_number : e.episode, slug: e.slug_title || "", d, img: imgOf(e.images, "thumbnail", 320),
           sslug: e.series_slug_title || "", title: e.season_title || "" });
       }
@@ -153,24 +171,27 @@
     const keepS = new Set(seasons.map((s) => s.id)), keepSer = new Set(sids);
     for (const k of Object.keys(cache.eps)) if (!keepS.has(k)) delete cache.eps[k];
     for (const k of Object.keys(cache.series)) if (!keepSer.has(k)) delete cache.series[k];
-    chrome.storage.local.set({ calCache: cache }).catch(() => {});
+    chrome.storage.local.set({ calCache2: cache }).catch(() => {});
 
     // Einträge der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte + 7 Tage)
     const items = [];
     for (const s of seasons) {
       const ser = series.get(s.sid) || {};
       const eps = ((cache.eps[s.id] && cache.eps[s.id].list) || []).slice().sort((a, b) => a.d - b.d);
-      let title = s.title || (eps[0] && eps[0].title) || ser.title || "";
+      // „Staffel 1“ allein sagt nichts: dann Serientitel (+ Staffel ab 2)
+      const own = s.title && !/^\s*(Staffel|Season|Saison|Temporada|Stagione)\s*\d+\s*$/i.test(s.title) ? s.title : "";
+      let title = own || `${ser.title || (eps[0] && eps[0].title) || ""}${s.num > 1 ? ` ${de ? "Staffel" : "Season"} ${s.num}` : ""}`;
       const tagged = typeof crDetectLanguage === "function" ? crDetectLanguage(title) !== null : /\)\s*$/.test(title);
       if (s.audio !== "ja-JP" && DUB[s.audio] && !tagged) title += ` (${DUB[s.audio]} Dub)`;
       const slug = (eps[0] && eps[0].sslug) || ser.slug_title || "";
       const poster = imgOf(ser.images, "poster_wide", 320);
       for (const e of eps) if (e.d >= start && e.d < end) items.push({ ...e, sid: s.sid, slug2: slug, title, img: e.img || poster });
-      const last = eps[eps.length - 1];
-      if (!last || last.d < now - 21 * 864e5 || typeof last.n !== "number") continue;
+      const out = eps.filter((e) => e.d <= now), last = out[out.length - 1];
+      const known = new Set(eps.map((e) => +e.n));
+      if (!last || last.d < now - 21 * 864e5 || !isFinite(+last.n)) continue;
       for (let k = 1; k <= 3; k++) {
-        const d = last.d + k * 7 * 864e5, n = last.n + k;
-        if (s.count && n > s.count) break;
+        const d = last.d + k * 7 * 864e5, n = +last.n + k;
+        if (known.has(n)) continue;
         if (d <= now || d < start) continue;
         if (d >= end) break;
         items.push({ id: "", n, d, sid: s.sid, slug2: slug, title, img: last.img || poster, soon: true });
@@ -218,4 +239,8 @@
   }
   // crcatalog.js wird nach diesem Skript geladen: erst danach starten
   setTimeout(run, 0);
+  // Reste von robots.txt, falls der Browser nach window.stop() noch Text angehängt hat
+  const dropPre = () => { for (const p of document.querySelectorAll("body > pre, html > pre")) p.remove(); };
+  addEventListener("DOMContentLoaded", dropPre, { once: true });
+  setTimeout(dropPre, 500);
 })();
