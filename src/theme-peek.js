@@ -483,6 +483,13 @@ function crlfPeekEarly(card) {
     // Bild der Karte: Hochformat = Poster, Querformat = Folgenbild
     const img = d.poster && [...card.querySelectorAll("img")].map(crlfImgInfo).find((o) => o.src === d.poster);
     if (img && img.w > img.h) { d.thumb = d.poster; d.poster = null; }
+    // Folgenbild: der eigene Kalender (calbuild.js) hat keine Vorschau der Seite, die es sonst liefern würde; er legt es
+    // an der Karte ab (data-crlf-thumb), sonst das Bild, das content.js durch das Poster ersetzt hat
+    if (!d.thumb) {
+      const own = card.closest("[data-crlf-thumb]") || card.querySelector("[data-crlf-thumb]");
+      const orig = (own && own.dataset.crlfThumb) || [...card.querySelectorAll("img[data-crlf-poster-orig]")].map((i) => i.dataset.crlfPosterOrig).find((s) => s && !/^data:/.test(s));
+      if (orig && orig !== d.poster) d.thumb = orig;
+    }
     const line = [...card.querySelectorAll("*")].find((e) => !e.closest(".crlf-actions") && /(Folgen?|Episoden?|Episodes?)\s*\d/i.test(e.textContent) && e.textContent.length < 60);
     d.epNo = line ? (line.textContent.match(/(?:Folgen?|Episoden?|Episodes?)\s*(\d+)/i) || [])[1] || "" : "";
     const pr = card.querySelector("progress");

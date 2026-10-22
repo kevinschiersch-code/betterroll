@@ -62,7 +62,8 @@
     .crlf-calweek article.release { position: relative; margin: 0 0 10px; background: #141519; padding: 6px; }
     .crlf-calweek article.release img { display: block; width: 100%; height: auto; }
     .crlf-calweek .season-name a { color: #fff; text-decoration: none; }
-    .crlf-calweek .crlf-soon { opacity: .75; }
+    /* geschätzte Folgen: nur Schrift gedämpft, das Titelbild bleibt voll sichtbar */
+    .crlf-calweek .crlf-soon time, .crlf-calweek .crlf-soon .season-name, .crlf-calweek .crlf-soon .episode { opacity: .7; }
     .crlf-calstamp { color: #888; font-size: 12px; }`);
   document.head.append(css);
   const bar = el("header", { class: "crlf-calbar" },
@@ -233,7 +234,7 @@
         const when = new Date(it.d);
         const epText = `${L.ep} ${it.n}`;
         const thumb = it.img ? el("img", { src: it.img, width: "160", height: "90", alt: "", loading: "lazy" }) : null;
-        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}` },
+        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null },
           el("time", { class: "available-time", datetime: when.toISOString() }, fmtTime.format(when)),
           el("div", { class: "season-name" }, el("a", { href: path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`) }, el("cite", { itemprop: "name" }, it.title))),
           el("div", { class: "episode" }, el("span", {}, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),

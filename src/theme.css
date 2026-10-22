@@ -102,6 +102,9 @@ html.crlf-themed article.release *,
 html.crlf-themed .js-release * { border-color: var(--crlf-border) !important; }
 html.crlf-themed article.release img,
 html.crlf-themed .js-release img { border-radius: 8px !important; }
+/* Titelbild hebt sich von der (dichteren) Glaskarte ab, bleibt aber ruhig */
+html.crlf-themed article.release img.crlf-poster,
+html.crlf-themed .js-release img.crlf-poster { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) !important; }
 html.crlf-themed article.release time,
 html.crlf-themed .js-release time,
 html.crlf-themed .available-time {
@@ -191,7 +194,7 @@ html.crlf-themed.crlf-dark.crlf-bg-aurora {
   --crlf-bg: #0b0a18; --crlf-border: #2b2745; --crlf-muted: #a19bc2; --crlf-fg: #f1eefb;
   --crlf-accent: #c084fc; --crlf-accent-2: #e2b6ff; --crlf-acc-rgb: 192, 132, 252; --crlf-on-accent: #1c0b2b;
   --crlf-b1: rgba(192, 132, 252, 0.50); --crlf-b2: rgba(56, 189, 248, 0.32); --crlf-b3: rgba(244, 114, 182, 0.36);
-  --crlf-glass: rgba(22, 19, 42, 0.58); --crlf-glass-2: rgba(32, 27, 58, 0.62);
+  --crlf-glass: rgba(22, 19, 42, 0.72); --crlf-glass-2: rgba(32, 27, 58, 0.76);
   --crlf-btn-bg: rgba(22, 19, 42, 0.85); --crlf-btn-border: #3b3560;
 }
 /* Glow: warmes Glutlicht, Bernstein-Akzent, feines Filmkorn */
@@ -199,7 +202,7 @@ html.crlf-themed.crlf-dark.crlf-bg-glow {
   --crlf-bg: #120d0b; --crlf-border: #36281f; --crlf-muted: #ad9a8c; --crlf-fg: #f7efe9;
   --crlf-accent: #ff8a3d; --crlf-accent-2: #ffc08a; --crlf-acc-rgb: 255, 138, 61; --crlf-on-accent: #241003;
   --crlf-b1: rgba(255, 138, 61, 0.42); --crlf-b2: rgba(255, 72, 72, 0.20);
-  --crlf-glass: rgba(32, 22, 17, 0.62); --crlf-glass-2: rgba(44, 30, 22, 0.66);
+  --crlf-glass: rgba(32, 22, 17, 0.76); --crlf-glass-2: rgba(44, 30, 22, 0.80);
   --crlf-btn-bg: rgba(32, 22, 17, 0.85); --crlf-btn-border: #4a3528;
 }
 /* Raster: kühler Tech-Look, Türkis-Akzent, Punktraster */
@@ -208,14 +211,14 @@ html.crlf-themed.crlf-dark.crlf-bg-grid {
   --crlf-accent: #22d3ee; --crlf-accent-2: #8af0ff; --crlf-acc-rgb: 34, 211, 238; --crlf-on-accent: #02222a;
   --crlf-b1: rgba(34, 211, 238, 0.30);
   --crlf-dot: rgba(138, 240, 255, 0.16);
-  --crlf-glass: rgba(10, 26, 34, 0.62); --crlf-glass-2: rgba(14, 34, 44, 0.66);
+  --crlf-glass: rgba(10, 26, 34, 0.76); --crlf-glass-2: rgba(14, 34, 44, 0.80);
   --crlf-btn-bg: rgba(10, 26, 34, 0.85); --crlf-btn-border: #1f4757;
 }
 /* Bild: eigenes Hintergrundbild (theme.js malt es in #crlf-banner), neutrales Glas, Crunchyroll-Orange als Akzent */
 html.crlf-themed.crlf-dark.crlf-bg-banner {
   --crlf-bg: #0c0d12; --crlf-border: rgba(255, 255, 255, 0.14); --crlf-muted: #b4b7c4; --crlf-fg: #f4f5f8;
   --crlf-accent: #f47521; --crlf-accent-2: #ffad6b; --crlf-acc-rgb: 244, 117, 33; --crlf-on-accent: #1f0d02;
-  --crlf-glass: rgba(14, 15, 22, 0.6); --crlf-glass-2: rgba(22, 24, 34, 0.66);
+  --crlf-glass: rgba(14, 15, 22, 0.74); --crlf-glass-2: rgba(22, 24, 34, 0.80);
   --crlf-btn-bg: rgba(14, 15, 22, 0.85); --crlf-btn-border: rgba(255, 255, 255, 0.18);
 }
 #crlf-banner { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; display: block; }
@@ -224,7 +227,7 @@ html:not(.crlf-bg-banner) #crlf-banner { display: none; }
 html.crlf-themed.crlf-dark.crlf-bg-video {
   --crlf-bg: #111116; --crlf-border: rgba(255, 255, 255, 0.1); --crlf-muted: #b9bccb; --crlf-fg: #f4f4f8;
   --crlf-accent: #ffb454; --crlf-accent-2: #ffd59a; --crlf-acc-rgb: 255, 180, 84; --crlf-on-accent: #241503;
-  --crlf-glass: rgba(20, 20, 30, 0.66); --crlf-glass-2: rgba(28, 28, 42, 0.72);
+  --crlf-glass: rgba(20, 20, 30, 0.80); --crlf-glass-2: rgba(28, 28, 42, 0.86);
   --crlf-btn-bg: rgba(20, 20, 30, 0.8); --crlf-btn-border: rgba(255, 255, 255, 0.16);
 }
 #crlf-video { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: #111; }

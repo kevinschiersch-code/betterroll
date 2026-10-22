@@ -142,7 +142,8 @@ body:has(.crlf-cpanel) #crlf-theme-toggle { display: none !important; }
    beeinflusst die Spaltenbreite nicht (contain) */
 html:not(.crlf-off) .crlf-epline { display: flex !important; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; min-height: 22px; min-width: 0; contain: inline-size; }
 html:not(.crlf-off) .crlf-epline > :not(.crlf-btn-talk) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* Sprach-Abzeichen vorn in derselben Zeile; wird es zu eng, kürzt sich zuerst das Abzeichen */
+/* Sprach-Abzeichen hinter der Folge in derselben Zeile; wird es zu eng, kürzt sich nur das Abzeichen */
+html:not(.crlf-off) .crlf-epline > :not(.crlf-meta):not(.crlf-btn-talk) { flex-shrink: 0; }
 html:not(.crlf-off) .crlf-epline > .crlf-meta { flex: 0 1 auto; flex-wrap: nowrap; margin: 0; }
 html:not(.crlf-off) .crlf-epline > .crlf-meta > .crlf-alt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .crlf-epline > .crlf-btn-talk { margin-left: auto !important; flex: none; align-self: center; opacity: 0.8; transition: opacity 0.15s, transform 0.15s; }

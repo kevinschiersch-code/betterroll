@@ -619,7 +619,7 @@ function versionLabel(lang) {
 }
 
 // Hinweis-Zeile direkt unter dem Titel (Staffel, Sprache, andere Fassung), damit die Kopfzeile frei bleibt
-// Die Zeile sitzt vorn in der Folgen-Zeile („English  Folge 7  💬“), sonst unter dem Titel. Sie wird an der Karte gemerkt,
+// Die Zeile sitzt in der Folgen-Zeile hinter der Folge („Folge 7  English  💬“), sonst unter dem Titel. Sie wird an der Karte gemerkt,
 // damit sie nach einem Neuzeichnen der Folgen-Zeile durch die Seite sofort wieder eingesetzt werden kann.
 function metaRow(release) {
   let row = release.querySelector(".crlf-meta") || release.crlfMeta;
@@ -632,7 +632,11 @@ function metaRow(release) {
 function placeMeta(release, row) {
   const line = release.querySelector(".crlf-epline");
   if (line) {
-    if (row.parentElement !== line) line.prepend(row);
+    // hinter „Folge 7“, vor 💬 (Nutzerwunsch: erst die Folge, dann die Sprache)
+    const talk = [...line.children].find((c) => c.classList.contains("crlf-btn-talk"));
+    if (row.parentElement !== line || (talk ? row.nextElementSibling !== talk : row !== line.lastElementChild)) {
+      if (talk) line.insertBefore(row, talk); else line.appendChild(row);
+    }
     return true;
   }
   if (release.contains(row)) return true;
