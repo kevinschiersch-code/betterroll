@@ -337,6 +337,11 @@ function crlfPeekBar(bar, progress) {
   const pct = Math.round((progress || 0) * 100);
   bar.title = T("Fortschritt {0} %", pct);
   bar.firstChild.style.setProperty("--p", `${pct}%`);
+  // gesehen (ab 90 %): Hinweis „✓ Gesehen“ direkt unter dem Balken
+  const seen = progress != null && progress >= 0.9;
+  let tag = bar.nextElementSibling && bar.nextElementSibling.classList.contains("crlf-pk-seen") ? bar.nextElementSibling : null;
+  if (seen && !tag) { tag = document.createElement("div"); tag.className = "crlf-pk-seen"; tag.textContent = "✓ " + T("Gesehen"); bar.after(tag); }
+  else if (!seen && tag) tag.remove();
 }
 
 // Knöpfe der Vorschau (Abspielen/Fortsetzen, Playlist …)

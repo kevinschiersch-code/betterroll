@@ -129,6 +129,7 @@ var CRLF_EN = {
   "Ausblenden (ausgrauen, nach unten)": "Hide (grey out, move down)",
   "Kommentare zur Folge": "Episode comments",
   "Fortschritt {0} %": "Progress {0} %",
+  "Gesehen": "Watched",
   "Sprachfassung": "Language version",
   "Auch verfügbar: {0}": "Also available: {0}",
   "ST": "S",

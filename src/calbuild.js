@@ -70,6 +70,13 @@
     .crlf-calweek article.release { position: relative; margin: 0 0 10px; background: #141519; padding: 6px; }
     .crlf-calweek article.release img { display: block; width: 100%; height: auto; }
     .crlf-calweek .season-name a { color: #fff; text-decoration: none; }
+    /* Wertquelle für content.js: unsichtbar, dann zeichnet content.js den orangen Balken direkt unter dem Bild */
+    .crlf-calweek progress.crlf-progsrc { display: none !important; }
+    /* Balken im unteren Rand des Titelbilds (wie bei Crunchyroll), nicht darunter */
+    .crlf-calweek .crlf-pbar { position: relative; z-index: 2; height: 5px; margin: -12px auto 7px !important;
+      transform: scaleX(0.92); background: rgba(0, 0, 0, 0.55) !important; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
+    .crlf-calweek a.crlf-eplink { color: inherit !important; text-decoration: none !important; }
+    .crlf-calweek a.crlf-eplink:hover { text-decoration: underline !important; }
     /* geschätzte Folgen: nur Schrift gedämpft, das Titelbild bleibt voll sichtbar */
     .crlf-calweek .crlf-soon time, .crlf-calweek .crlf-soon .season-name, .crlf-calweek .crlf-soon .episode { opacity: .7; }
     .crlf-calstamp { color: #888; font-size: 12px; }`);
@@ -241,12 +248,16 @@
       for (const it of items.filter((x) => x.d >= day && x.d < next).sort((a, b) => a.d - b.d || a.title.localeCompare(b.title))) {
         const when = new Date(it.d);
         const epText = `${L.ep} ${it.n}`;
+        // Bild und „Folge N“ führen zur Folge; geschätzte Folgen (noch ohne Folgenseite) zur Serie
+        const seriesUrl = path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`);
+        const target = it.id ? path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`) : seriesUrl;
         const thumb = it.img ? el("img", { src: it.img, width: "160", height: "90", alt: "", loading: "lazy" }) : null;
-        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null },
+        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null,
+          "data-crlf-ep": it.id ? it.id.toUpperCase() : null },
           el("time", { class: "available-time", datetime: when.toISOString() }, fmtTime.format(when)),
           el("div", { class: "season-name" }, el("a", { href: path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`) }, el("cite", { itemprop: "name" }, it.title))),
-          el("div", { class: "episode" }, el("span", {}, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
-          thumb && (it.id ? el("a", { href: path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`), class: "available-episode-link" }, thumb) : thumb))));
+          el("div", { class: "episode" }, el("a", { href: target, class: "crlf-eplink" }, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
+          thumb && el("a", { href: target, class: "available-episode-link" }, thumb))));
       }
       week.append(el("section", { class: "day", "data-crlf-today": ymd(day) === ymd(new Date()) ? "" : null },
         el("h1", {}, el("time", { datetime: ymd(day) }, fmtDay.format(day))), ol));
@@ -255,7 +266,23 @@
     document.body.append(week);
     if (typeof crlfCatLoad === "function") crlfCatLoad(); // Beschreibungen für die neuen Serien-Links
     placeNow();
+    chrome.storage.local.get("epProg").then(({ epProg }) => showProgress(epProg || {})).catch(() => {});
   }
+
+  // eigener Fortschritt (watchlog.js) als <progress> in der Karte, wie früher der Balken der Seite: content.js zeichnet
+  // daraus den orangen Balken und graut gesehene Folgen (ab 90 %) aus, die Vorschau zeigt ihn ebenfalls.
+  // Ohne gemessenen Wert bleibt der Balken weg (hidden), damit nicht jede Karte „0 %“ zeigt.
+  function showProgress(epProg) {
+    for (const card of document.querySelectorAll(".crlf-calweek article.release[data-crlf-ep]")) {
+      // angefangene Folgen mindestens 10 % (Nutzerwunsch), sonst ist nach ein paar Sekunden noch nichts zu sehen
+      const e = epProg[card.dataset.crlfEp], v = e && e.p > 0 ? String(Math.max(0.1, e.p)) : null;
+      let pr = card.querySelector(":scope > progress");
+      if (v === null) { if (pr) pr.remove(); continue; }
+      if (!pr) { pr = el("progress", { max: "1", class: "crlf-progsrc" }); card.append(pr); }
+      if (pr.getAttribute("value") !== v) pr.setAttribute("value", v);
+    }
+  }
+  chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && ch.epProg) showProgress(ch.epProg.newValue || {}); });
 
   // „Jetzt“-Linie in der Spalte von heute: über der ersten Folge, deren Zeit noch nicht erreicht ist (Reihenfolge wie
   // angezeigt, also nach ★-Sortierung). Läuft jede halbe Minute und nach jeder Änderung der Liste (Filter, ★/▼).
