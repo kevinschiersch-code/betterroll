@@ -3,6 +3,7 @@
 # und daraus den Windows-Installer (.exe, NSIS).
 #
 #   python3 build.py            -> dist/chrome/, dist/firefox/, Zips und Installer
+#   python3 build.py --public   -> nur dist/public/betterrollpublic-*.zip (öffentliche Linie)
 #
 # Firefox: Die Datei dist/betterroll-firefox-<version>.zip muss einmal bei addons.mozilla.org
 # („Eigene Verbreitung“) signiert werden. Die signierte .xpi nach signed/betterroll-firefox.xpi legen
@@ -78,6 +79,54 @@ def store_variant(folder: Path, firefox: bool):
     mf.write_text(json.dumps(m, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+# Öffentliche Linie „betterrollpublic“: Store-Fassung plus ohne private Extras (KS-Wasserzeichen, Schalter „Messung“,
+# Hintergrundbild per Web-Adresse mit Berechtigung für alle Seiten). Die Quelle bleibt unverändert.
+PUBLIC_NAME = "BetterRoll Public"
+PUBLIC_GECKO_ID = "betterrollpublic@enigma"
+
+
+def cut(s: str, start: str, end: str) -> str:
+    a = s.index(start)
+    return s[:a] + s[s.index(end, a) + len(end):]
+
+
+def public_variant(folder: Path, firefox: bool):
+    store_variant(folder, firefox)
+    for page in ("popup.html", "welcome.html"):
+        f = folder / page
+        f.write_text(cut(f.read_text(encoding="utf-8"), '<footer class="sig"', "</footer>"), encoding="utf-8")
+    ph = folder / "popup.html"
+    h = ph.read_text(encoding="utf-8")
+    # Schalter „Messung“ ausblenden; popup.js liest das Feld weiter, darum bleibt ein verstecktes Kästchen
+    a = h.rindex("<label", 0, h.index('id="diag"'))
+    h = h[:a] + '<input type="checkbox" id="diag" hidden>' + h[h.index("</label>", a) + len("</label>"):]
+    h = h.replace('<input type="url" id="bannerUrl"', '<input type="url" id="bannerUrl" hidden', 1)
+    ph.write_text(h, encoding="utf-8")
+    mf = folder / "manifest.json"
+    m = json.loads(mf.read_text(encoding="utf-8"))
+    m["name"] = m["action"]["default_title"] = PUBLIC_NAME
+    m.pop("optional_host_permissions", None)
+    if firefox:
+        m["browser_specific_settings"]["gecko"]["id"] = PUBLIC_GECKO_ID
+    mf.write_text(json.dumps(m, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def build_public(manifest: dict):
+    version = manifest["version"]
+    pub = DIST / "public"
+    pub.mkdir(parents=True, exist_ok=True)
+    for p in pub.glob("*.zip"):
+        p.unlink()
+    for name, ff in (("chrome", False), ("firefox", True)):
+        tmp = pub / name
+        copy_source(tmp)
+        if ff:
+            (tmp / "manifest.json").write_text(json.dumps(firefox_manifest(manifest), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        public_variant(tmp, ff)
+        zip_dir(tmp, pub / f"betterrollpublic-{name}-{version}.zip")
+    print(f"öffentlich: {pub}")
+
+
 def zip_dir(folder: Path, out: Path):
     if out.exists():
         out.unlink()
@@ -96,6 +145,8 @@ def main():
     manifest = json.loads((SRC / "manifest.json").read_text(encoding="utf-8"))
     version = manifest["version"]
     DIST.mkdir(exist_ok=True)
+    if "--public" in sys.argv:  # nur die öffentliche Linie bauen
+        return build_public(manifest)
 
     # Updater für Chrome/Edge/Brave (UTF-8 mit BOM, sonst liest Windows PowerShell Umlaute falsch)
     ps = (HERE / "updater.ps1").read_text(encoding="utf-8").replace("__BASE_URL__", BASE_URL)
@@ -130,6 +181,7 @@ def main():
             (tmp / "manifest.json").write_text(json.dumps(firefox_manifest(manifest), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         store_variant(tmp, ff)
         zip_dir(tmp, store / f"betterroll-{name}-store-{version}.zip")
+    build_public(manifest)
 
     # „Updates einrichten“ für schon entpackt geladene Add-ons (ohne Installer): Doppelklick auf die .cmd
     setup_zip = DIST / "BetterRoll-Updates-einrichten.zip"
