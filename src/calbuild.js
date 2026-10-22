@@ -22,8 +22,8 @@
     "vi-VN": "Vietnamese", "pl-PL": "Polish", "tr-TR": "Turkish", "ca-ES": "Catalan" };
   const de = !loc || /^de/i.test(loc);
   const L = de
-    ? { title: "Simulcast-Kalender", prev: "‹ Vorherige Woche", next: "Nächste Woche ›", load: "Kalender wird geladen …", err: "Kalender konnte nicht geladen werden", retry: "Erneut versuchen", ep: "Folge", avail: "Verfügbar", soon: "voraussichtlich", reload: "↻ Neu laden", stamp: "Stand" }
-    : { title: "Simulcast Calendar", prev: "‹ Previous week", next: "Next week ›", load: "Loading calendar …", err: "Could not load the calendar", retry: "Try again", ep: "Episode", avail: "Available", soon: "expected", reload: "↻ Reload", stamp: "As of" };
+    ? { title: "Release-Kalender", prev: "‹ Vorherige Woche", next: "Nächste Woche ›", load: "Kalender wird geladen …", err: "Kalender konnte nicht geladen werden", retry: "Erneut versuchen", ep: "Folge", avail: "Verfügbar", soon: "voraussichtlich", reload: "↻ Neu laden", stamp: "Stand" }
+    : { title: "Release Calendar", prev: "‹ Previous week", next: "Next week ›", load: "Loading calendar …", err: "Could not load the calendar", retry: "Try again", ep: "Episode", avail: "Available", soon: "expected", reload: "↻ Reload", stamp: "As of" };
   const path = (p) => `/${loc ? loc + "/" : ""}${p}`;
 
   // Woche: Montag bis Sonntag um das Datum aus ?date= (sonst heute), Ortszeit
@@ -49,13 +49,14 @@
   document.documentElement.lang = de ? "de" : "en";
   const css = el("style", {}, `
     body.crlf-calbuild { margin: 0; background: #000; color: #dadada; font: 14px/1.4 "Lato", "Helvetica Neue", Arial, sans-serif; }
-    .crlf-calbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; flex-wrap: wrap; }
+    .crlf-calbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; flex-wrap: wrap; max-width: 1378px; margin: 0 auto; }
     .crlf-calbar a { color: #f47521; text-decoration: none; }
     .crlf-calbar h1 { margin: 0 auto 0 0; font-size: 20px; color: #fff; }
     .crlf-calmsg { padding: 40px 24px; text-align: center; color: #aaa; }
     .crlf-calmsg button { margin-top: 12px; padding: 6px 14px; cursor: pointer; }
-    .crlf-calweek { display: flex; align-items: flex-start; gap: 8px; padding: 0 24px 40px; }
-    .crlf-calweek section.day { flex: 1 1 0; min-width: 0; }
+    /* feste Breite wie der alte Kalender: Browser-Zoom vergrößert die ganze Seite, nicht nur den Inhalt der Kacheln */
+    .crlf-calweek { display: flex; align-items: flex-start; gap: 8px; padding: 0 24px 40px; width: max-content; margin: 0 auto; }
+    .crlf-calweek section.day { flex: 0 0 190px; width: 190px; min-width: 0; }
     .crlf-calweek section.day > h1 { font-size: 14px; margin: 0 0 8px; color: #fff; }
     .crlf-calweek ol.releases { list-style: none; margin: 0; padding: 0; }
     .crlf-calweek article.release { position: relative; margin: 0 0 10px; background: #141519; padding: 6px; }
@@ -106,22 +107,22 @@
   // ohne Abruf aus dem Speicher. Neu geholt wird erst nach 7 Tagen oder mit „↻ Neu laden“.
   const weekKey = ymd(start);
   async function cachedWeek(force) {
-    const { calWeeks = {} } = await chrome.storage.local.get("calWeeks");
+    const { calWeeks2: calWeeks = {} } = await chrome.storage.local.get("calWeeks2");
     const w = calWeeks[weekKey];
     if (!force && w && Date.now() - w.t < CAL_WEEK_TTL) return w;
     const items = await loadWeek(force);
     calWeeks[weekKey] = { t: Date.now(), items };
     for (const k of Object.keys(calWeeks).sort().slice(0, -CAL_WEEKS_KEPT)) delete calWeeks[k];
-    await chrome.storage.local.set({ calWeeks }).catch(() => {});
+    await chrome.storage.local.set({ calWeeks2: calWeeks }).catch(() => {});
     return calWeeks[weekKey];
   }
 
   async function loadWeek(force) {
     const locale = crlfCatLocale();
-    const { calCache2: calCache = {} } = force ? {} : await chrome.storage.local.get("calCache2");
+    const { calCache3: calCache = {} } = force ? {} : await chrome.storage.local.get("calCache3");
     const cache = { series: calCache.series || {}, eps: calCache.eps || {} };
     const now = Date.now();
-    chrome.storage.local.remove("calCache").catch(() => {}); // Zwischenspeicher der ersten Fassung
+    chrome.storage.local.remove(["calCache", "calCache2", "calWeeks"]).catch(() => {}); // Zwischenspeicher der ersten Fassung
 
     // Serien der Season (Woche) und der vorigen Season (laufende Zweiteiler)
     const prevSeason = new Date(start.getFullYear(), start.getMonth() - 3, 1);
@@ -162,7 +163,7 @@
         for (const v of vers) {
           const audio = v.audio_locale || "ja-JP", id = v.guid || v.season_guid || s.id;
           const o = best.get(audio);
-          if (!o || n > o.n) best.set(audio, { id, title: s.title || "", audio, n, num: s.season_number || n, count: s.number_of_episodes || 0 });
+          if (!o || n > o.n) best.set(audio, { id, title: s.title || "", audio, n, num: +s.season_display_number || s.season_number || n, count: s.number_of_episodes || 0 });
         }
       }
       cache.series[sid] = { t: now, seasons: [...best.values()] };
@@ -188,7 +189,7 @@
     const keepS = new Set(seasons.map((s) => s.id)), keepSer = new Set(sids);
     for (const k of Object.keys(cache.eps)) if (!keepS.has(k)) delete cache.eps[k];
     for (const k of Object.keys(cache.series)) if (!keepSer.has(k)) delete cache.series[k];
-    chrome.storage.local.set({ calCache2: cache }).catch(() => {});
+    chrome.storage.local.set({ calCache3: cache }).catch(() => {});
 
     // Einträge der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte + 7 Tage)
     const items = [];
@@ -197,7 +198,7 @@
       const eps = ((cache.eps[s.id] && cache.eps[s.id].list) || []).slice().sort((a, b) => a.d - b.d);
       // „Staffel 1“ allein sagt nichts: dann Serientitel (+ Staffel ab 2)
       const own = s.title && !/^\s*(Staffel|Season|Saison|Temporada|Stagione)\s*\d+\s*$/i.test(s.title) ? s.title : "";
-      let title = own || `${ser.title || (eps[0] && eps[0].title) || ""}${s.num > 1 ? ` ${de ? "Staffel" : "Season"} ${s.num}` : ""}`;
+      let title = own || `${ser.title || (eps[0] && eps[0].title) || ""} ${de ? "Staffel" : "Season"} ${s.num || 1}`; // wie im alten Kalender (auch „Staffel 1“): Schlüssel der ★/▼-Markierungen
       const tagged = typeof crDetectLanguage === "function" ? crDetectLanguage(title) !== null : /\)\s*$/.test(title);
       if (s.audio !== "ja-JP" && DUB[s.audio] && !tagged) title += ` (${DUB[s.audio]} Dub)`;
       const slug = (eps[0] && eps[0].sslug) || ser.slug_title || "";
@@ -235,7 +236,7 @@
         ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}` },
           el("time", { class: "available-time", datetime: when.toISOString() }, fmtTime.format(when)),
           el("div", { class: "season-name" }, el("a", { href: path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`) }, el("cite", { itemprop: "name" }, it.title))),
-          el("div", { class: "episode" }, el("span", {}, epText), " ", el("span", {}, it.d > Date.now() ? (it.soon ? L.soon : "") : L.avail)),
+          el("div", { class: "episode" }, el("span", {}, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
           thumb && (it.id ? el("a", { href: path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`), class: "available-episode-link" }, thumb) : thumb))));
       }
       week.append(el("section", { class: "day" }, el("h1", {}, el("time", { datetime: ymd(day) }, fmtDay.format(day))), ol));
