@@ -2,8 +2,9 @@
 // der Crunchyroll-Seiten (Player-iframe). Nutzt nur den eigenen „… überspringen“-Knopf des Players: Ist er 0,5 s
 // sichtbar, wird er angeklickt. Springt der Player danach nicht, wird bis zu 3-mal neu geklickt. Kein eigenes Spulen
 // (das frühere Warten + 1,5 s Zurück ließ den Player hängen).
-// Zurückgespult in einen schon übersprungenen Abschnitt oder selbst hineingesprungen: dann wird nicht übersprungen
-// (jede Folge merkt sich die Zeitspannen der erledigten Abschnitte).
+// Jeder Abschnitt wird beim ersten Erreichen übersprungen, auch wenn man per Pfeiltasten/Spulen hineingesprungen ist.
+// Nur wer danach selbst in einen schon übersprungenen Abschnitt zurückspult, sieht ihn (jede Folge merkt sich die
+// Zeitspannen der erledigten Abschnitte).
 // Keine Schnittstelle, kein Netzverkehr. Schalter: Einstellung autoSkip (ab Werk an).
 (() => {
   const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
@@ -12,8 +13,7 @@
   let on = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
   let state = new WeakMap();
-  let seen = [], episode = "", lastUserSeek = 0, ownUntil = 0, lastClick = 0; // erledigte Abschnitte { start, end } dieser Folge
-  const hooked = new WeakSet();
+  let seen = [], episode = "", lastClick = 0; // erledigte Abschnitte { start, end } dieser Folge
   const handled = (t) => seen.some((x) => t >= x.start - 3 && t <= x.end + 3);
 
   // Schalter lesen (Hauptschalter und autoSkip)
@@ -61,8 +61,8 @@
       if (!visible(el)) { state.delete(el); continue; }
       let s = state.get(el);
       if (!s) {
-        // selbst hineingesprungen (Knopf kam direkt nach eigenem Spulen) oder zurückgespult in Erledigtes: stehen lassen
-        s = { since: now, tries: 0, clickedAt: 0, off: now - lastUserSeek < 2500 || handled(t) };
+        // zurückgespult in einen schon übersprungenen Abschnitt: stehen lassen
+        s = { since: now, tries: 0, clickedAt: 0, off: handled(t) };
         state.set(el, s);
       }
       if (s.off || s.tries >= TRIES) continue;
@@ -72,7 +72,6 @@
       lastClick = now;
       s.tries++; s.clickedAt = now;
       const from = t;
-      ownUntil = now + 4000; // der Sprung des Players zählt nicht als eigenes Spulen
       video.addEventListener("seeked", () => {
         if (Date.now() - now > 4000) return;
         s.off = true; // gesprungen: erledigt
@@ -83,13 +82,10 @@
     }
   }
 
-  // eigenes Spulen bemerken (nur während das Video schon läuft); neue Folge = Liste leeren
+  // neue Folge = Liste leeren
   function watch(video) {
     const key = location.href + "|" + (video.currentSrc || "");
     if (key !== episode) { episode = key; seen = []; state = new WeakMap(); }
-    if (hooked.has(video)) return;
-    hooked.add(video);
-    video.addEventListener("seeking", () => { if (Date.now() > ownUntil && !video.paused && video.played.length) lastUserSeek = Date.now(); });
   }
 
   // eigentlicher Knopf zum Treffer: umgebender Knopf, sonst ein Knopf darin, sonst der Treffer selbst
