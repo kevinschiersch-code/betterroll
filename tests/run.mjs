@@ -487,6 +487,33 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Auto-Skip ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
+// ===== 3b. Auto-Skip nach eigenem Vorspulen: erstes Mal überspringen, zurückgespult nicht erneut =====
+// Der Testserver kann nicht wirklich spulen (keine Range-Anfragen): Abspielzeit daher nachgestellt, Spulen löst seeked aus
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/video.html");
+  await page.evaluate(() => { const v = document.getElementById("v"), b = document.getElementById("sk"); let pos = 0;
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; v.dispatchEvent(new Event("seeking")); setTimeout(() => v.dispatchEvent(new Event("seeked")), 20); } });
+    b.onclick = () => { __clicks++; v.currentTime = 90; }; // Intro 60–90 s
+    return v.play(); });
+  await page.waitForTimeout(400);
+  // selbst mitten ins Intro vorgespult, Knopf erscheint sofort
+  await page.evaluate(() => { document.getElementById("v").currentTime = 62; document.getElementById("sk").style.display = "block"; });
+  await page.waitForTimeout(1500);
+  const first = await page.evaluate("__clicks");
+  // Knopf weg, dann selbst zurück ins übersprungene Intro
+  await page.evaluate(() => { document.getElementById("sk").style.display = "none"; });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { document.getElementById("v").currentTime = 61; document.getElementById("sk").style.display = "block"; });
+  await page.waitForTimeout(1500);
+  const again = await page.evaluate("__clicks");
+  ok("Auto-Skip überspringt auch nach eigenem Vorspulen", first === 1, `${first} Klicks`);
+  ok("Auto-Skip: zurückgespult ins Intro wird nicht erneut übersprungen", again === 1, `${again} Klicks`);
+  ok("Auto-Skip (Spulen) ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
 await browser.close();
 server.close();
 
