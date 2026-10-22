@@ -11,7 +11,8 @@ import http from "http";
 import { fileURLToPath } from "url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = path.join(ROOT, "src");
+// BR_SRC=<Ordner> prüft stattdessen ein gebautes Paket (z. B. die öffentliche Linie aus build.py --public)
+const SRC = process.env.BR_SRC ? path.resolve(process.env.BR_SRC) : path.join(ROOT, "src");
 const results = [];
 const ok = (name, cond, info = "") => { results.push({ name, ok: !!cond, info }); };
 
@@ -88,7 +89,7 @@ const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);
   if (SLOW[url]) return setTimeout(() => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(SLOW[url]); }, 700);
   if (pages[url]) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(pages[url]()); }
-  const file = path.join(ROOT, url);
+  const file = url.startsWith("/src/") ? path.join(SRC, url.slice(5)) : path.join(ROOT, url);
   if (!file.startsWith(SRC) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
@@ -295,56 +296,60 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Vorschau: ohne Beschreibung der Seite Ersatz von AniList", /English description/.test(al.text) && /AniList/.test(al.text) && !al.ph && al.same, JSON.stringify(al));
   await page.evaluate(() => crlfPeekClose());
 
-  // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
-  const cat = await page.evaluate(async () => {
-    const calls = [], real = window.fetch;
-    window.fetch = async (url, o = {}) => {
-      calls.push({ url: String(url), cred: o.credentials, method: o.method || "GET" });
-      if (/^\/(?:de\/)?$/.test(url)) return new Response(`<script>window.__APP_CONFIG__={cxApiParams:{anonClientId:"anon-id",anonClientSecret:""}}</script>`);
-      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
-      if (String(url).startsWith("/content/v2/cms/objects/")) {
-        const ids = String(url).split("/").pop().split("?")[0].split(",");
-        return new Response(JSON.stringify({ data: ids.map((id) => ({ id, type: "series", description: `Deutsche Beschreibung für ${id} aus dem Katalog.` })) }));
-      }
-      return real(url, o);
-    };
-    await chrome.storage.local.remove("crCatPause");
-    await chrome.storage.local.remove("crCatCfg");
-    await crlfCatLoad();
-    window.fetch = real;
-    return { calls, desc: crlfCatDesc("G0X4") };
-  });
-  ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
-    && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
-  // Crunchyroll-Sterne über die Bewertungs-Schnittstelle: ohne Cookies, v3 abgelehnt -> v2, Weg gemerkt, Anzeige
-  const rate = await page.evaluate(async () => {
-    const calls = [], real = window.fetch;
-    window.fetch = async (url, o = {}) => {
-      calls.push({ url: String(url), cred: o.credentials });
-      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
-      if (String(url).startsWith("/content-reviews/v3/")) return new Response("", { status: 404 });
-      if (String(url).startsWith("/content-reviews/v2/")) return new Response(JSON.stringify({ "5s": { displayed: "9.8", unit: "K" }, "4s": { displayed: "1.2", unit: "K" }, average: "4.8", total: 11000 }));
-      return real(url, o);
-    };
-    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
-    const a = await crlfCatRating("G0X5");
-    const { crRatePath } = await chrome.storage.local.get("crRatePath");
-    const box = crlfRatingBox("Anime 9-9", "/de/series/G9X9/anime-9-9");
-    await new Promise((r) => setTimeout(r, 300));
-    const shown = box.querySelector(".crlf-pop-rrow").textContent;
-    // alles abgelehnt: kein Wert, 1 Tag Pause, danach keine weiteren Abrufe
-    window.fetch = async (url, o = {}) => { calls.push({ url: String(url), cred: o.credentials });
-      return url === "/auth/v1/token" ? new Response(JSON.stringify({ access_token: "tok", expires_in: 300 })) : new Response("", { status: 403 }); };
-    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
-    const b = await crlfCatRating("G0X7");
-    const n = calls.length, c = await crlfCatRating("G0X8");
-    const { crRatePause = 0 } = await chrome.storage.local.get("crRatePause");
-    window.fetch = real;
-    return { a, crRatePath, shown, b, c, paused: crRatePause > Date.now(), again: calls.length - n, omit: calls.every((x) => x.cred === "omit") };
-  });
-  ok("Bewertung: Sterne ohne Anmeldung aus dem Katalog", rate.omit && rate.a && rate.a.value === 4.8 && rate.a.count === 11000
-    && rate.crRatePath === "/content-reviews/v2/rating/series/" && /4[,.]8/.test(rate.shown), JSON.stringify(rate));
-  ok("Bewertung: abgelehnt -> Pause, alter Weg", rate.b === null && rate.c === null && rate.paused && rate.again === 0, JSON.stringify(rate));
+  // Crunchyroll-Katalog gibt es nur in der privaten Fassung (öffentliche Linie ohne crcatalog.js)
+  const HAS_CAT = fs.existsSync(path.join(SRC, "crcatalog.js"));
+  if (HAS_CAT) {
+    // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
+    const cat = await page.evaluate(async () => {
+      const calls = [], real = window.fetch;
+      window.fetch = async (url, o = {}) => {
+        calls.push({ url: String(url), cred: o.credentials, method: o.method || "GET" });
+        if (/^\/(?:de\/)?$/.test(url)) return new Response(`<script>window.__APP_CONFIG__={cxApiParams:{anonClientId:"anon-id",anonClientSecret:""}}</script>`);
+        if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+        if (String(url).startsWith("/content/v2/cms/objects/")) {
+          const ids = String(url).split("/").pop().split("?")[0].split(",");
+          return new Response(JSON.stringify({ data: ids.map((id) => ({ id, type: "series", description: `Deutsche Beschreibung für ${id} aus dem Katalog.` })) }));
+        }
+        return real(url, o);
+      };
+      await chrome.storage.local.remove("crCatPause");
+      await chrome.storage.local.remove("crCatCfg");
+      await crlfCatLoad();
+      window.fetch = real;
+      return { calls, desc: crlfCatDesc("G0X4") };
+    });
+    ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
+      && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
+    // Crunchyroll-Sterne über die Bewertungs-Schnittstelle: ohne Cookies, v3 abgelehnt -> v2, Weg gemerkt, Anzeige
+    const rate = await page.evaluate(async () => {
+      const calls = [], real = window.fetch;
+      window.fetch = async (url, o = {}) => {
+        calls.push({ url: String(url), cred: o.credentials });
+        if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+        if (String(url).startsWith("/content-reviews/v3/")) return new Response("", { status: 404 });
+        if (String(url).startsWith("/content-reviews/v2/")) return new Response(JSON.stringify({ "5s": { displayed: "9.8", unit: "K" }, "4s": { displayed: "1.2", unit: "K" }, average: "4.8", total: 11000 }));
+        return real(url, o);
+      };
+      await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+      const a = await crlfCatRating("G0X5");
+      const { crRatePath } = await chrome.storage.local.get("crRatePath");
+      const box = crlfRatingBox("Anime 9-9", "/de/series/G9X9/anime-9-9");
+      await new Promise((r) => setTimeout(r, 300));
+      const shown = box.querySelector(".crlf-pop-rrow").textContent;
+      // alles abgelehnt: kein Wert, 1 Tag Pause, danach keine weiteren Abrufe
+      window.fetch = async (url, o = {}) => { calls.push({ url: String(url), cred: o.credentials });
+        return url === "/auth/v1/token" ? new Response(JSON.stringify({ access_token: "tok", expires_in: 300 })) : new Response("", { status: 403 }); };
+      await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+      const b = await crlfCatRating("G0X7");
+      const n = calls.length, c = await crlfCatRating("G0X8");
+      const { crRatePause = 0 } = await chrome.storage.local.get("crRatePause");
+      window.fetch = real;
+      return { a, crRatePath, shown, b, c, paused: crRatePause > Date.now(), again: calls.length - n, omit: calls.every((x) => x.cred === "omit") };
+    });
+    ok("Bewertung: Sterne ohne Anmeldung aus dem Katalog", rate.omit && rate.a && rate.a.value === 4.8 && rate.a.count === 11000
+      && rate.crRatePath === "/content-reviews/v2/rating/series/" && /4[,.]8/.test(rate.shown), JSON.stringify(rate));
+    ok("Bewertung: abgelehnt -> Pause, alter Weg", rate.b === null && rate.c === null && rate.paused && rate.again === 0, JSON.stringify(rate));
+  } else ok("Öffentliche Fassung: kein Crunchyroll-Katalog geladen", await page.evaluate(() => typeof crlfCatLoad === "undefined"));
 
   const card4 = page.locator(".crlf-item:visible").nth(4);
   await card4.scrollIntoViewIfNeeded();
@@ -354,7 +359,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.mouse.move(b4.x + b4.width / 2, b4.y + b4.height / 2, { steps: 3 });
   await page.waitForTimeout(400);
   const catPeek = await page.evaluate(() => crlfPeekEl?.querySelector(".crlf-pk-desc")?.textContent || "");
-  ok("Vorschau: Beschreibung sofort aus dem Katalog", /aus dem Katalog/.test(catPeek), catPeek);
+  if (HAS_CAT) ok("Vorschau: Beschreibung sofort aus dem Katalog", /aus dem Katalog/.test(catPeek), catPeek);
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
@@ -459,7 +464,9 @@ server.close();
 }
 
 // ===== 5. Update-Hinweis am Symbol: heller Ring nur bei neuerer Version, Zeitplan nur einmal angelegt =====
-{
+// (nur private Fassung; die öffentliche Linie hat keinen Update-Helfer)
+const BG = fs.readFileSync(path.join(SRC, "background.js"), "utf8");
+if (BG.includes("crlf-update-check")) {
   const handlers = [], icons = [], alarms = {}, store = {};
   let created = 0; const startups = []; let answer = { ok: true, newer: true, latest: "9.9.9" };
   const noop = { addListener() {} };
@@ -495,7 +502,7 @@ server.close();
   ping(); await new Promise((r) => setTimeout(r, 20)); ping(); await new Promise((r) => setTimeout(r, 20));
   ok("Update-Symbol: Kalender öffnen prüft nach 15 Min.", asked === 1 && /upd/.test(icons.at(-1)[16]), `${asked} Prüfungen`);
   for (const f of Object.values(icons[0])) ok(`Update-Symbol: ${f} vorhanden`, fs.existsSync(path.join(SRC, f)));
-}
+} else ok("Öffentliche Fassung: ohne Update-Helfer", !BG.includes("sendNativeMessage") && !BG.includes("nativeMessaging"));
 
 // ===== 6. Design „Video“: jedes Motiv hat Video, Standbild und Eintrag in der Popup-Auswahl =====
 {
