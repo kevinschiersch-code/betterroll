@@ -56,7 +56,15 @@
     .crlf-calmsg button { margin-top: 12px; padding: 6px 14px; cursor: pointer; }
     /* feste Breite wie der alte Kalender: Browser-Zoom vergrößert die ganze Seite, nicht nur den Inhalt der Kacheln */
     .crlf-calweek { display: flex; align-items: flex-start; gap: 8px; padding: 0 24px 40px; width: max-content; margin: 0 auto; }
-    .crlf-calweek section.day { flex: 0 0 190px; width: 190px; min-width: 0; }
+    .crlf-calweek section.day { flex: 0 0 190px; width: 190px; min-width: 0; position: relative; }
+    /* heute: etwas breiter, leicht hinterlegt, Akzentrahmen */
+    html body .crlf-calweek section.day[data-crlf-today] { flex-basis: 240px !important; width: 240px !important; border-radius: 14px;
+      background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.07) !important; box-shadow: inset 0 0 0 1px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); padding: 0 6px 6px !important; }
+    html body .crlf-calweek section.day[data-crlf-today] > h1 { color: var(--crlf-accent, #f47521) !important; }
+    /* Jetzt-Linie: alles darunter ist noch nicht erschienen; sie rutscht beim Erscheinen sanft nach unten */
+    .crlf-nowline { position: absolute; left: 2px; right: 2px; height: 0; border-top: 2px solid var(--crlf-accent, #f47521); z-index: 3;
+      pointer-events: none; transition: top .6s ease; box-shadow: 0 0 8px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.8); }
+    .crlf-nowline::before { content: ""; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--crlf-accent, #f47521); }
     .crlf-calweek section.day > h1 { font-size: 14px; margin: 0 0 8px; color: #fff; }
     .crlf-calweek ol.releases { list-style: none; margin: 0; padding: 0; }
     .crlf-calweek article.release { position: relative; margin: 0 0 10px; background: #141519; padding: 6px; }
@@ -240,12 +248,43 @@
           el("div", { class: "episode" }, el("span", {}, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
           thumb && (it.id ? el("a", { href: path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`), class: "available-episode-link" }, thumb) : thumb))));
       }
-      week.append(el("section", { class: "day" }, el("h1", {}, el("time", { datetime: ymd(day) }, fmtDay.format(day))), ol));
+      week.append(el("section", { class: "day", "data-crlf-today": ymd(day) === ymd(new Date()) ? "" : null },
+        el("h1", {}, el("time", { datetime: ymd(day) }, fmtDay.format(day))), ol));
     }
     msg.remove();
     document.body.append(week);
     if (typeof crlfCatLoad === "function") crlfCatLoad(); // Beschreibungen für die neuen Serien-Links
+    placeNow();
   }
+
+  // „Jetzt“-Linie in der Spalte von heute: über der ersten Folge, deren Zeit noch nicht erreicht ist (Reihenfolge wie
+  // angezeigt, also nach ★-Sortierung). Läuft jede halbe Minute und nach jeder Änderung der Liste (Filter, ★/▼).
+  // Die Linie liegt über der Spalte (absolut), nicht in der Liste, damit Sortierung und Filter sie nicht anfassen.
+  let nowT = 0;
+  function placeNow() {
+    const col = document.querySelector(".crlf-calweek section.day[data-crlf-today]");
+    if (!col) return;
+    let line = col.querySelector(":scope > .crlf-nowline");
+    if (!line) { line = el("div", { class: "crlf-nowline", "aria-hidden": "true" }); col.append(line); }
+    const now = Date.now();
+    const cards = [...col.querySelectorAll("article.release")].filter((a) => a.offsetParent && !a.closest(".crlf-hidden"));
+    if (!cards.length) { line.hidden = true; return; }
+    const outer = (a) => (a.closest("li") || a);
+    const idx = cards.findIndex((a) => { const t = a.querySelector("time[datetime]"); return t && Date.parse(t.getAttribute("datetime")) > now; });
+    const base = col.getBoundingClientRect().top;
+    let y;
+    if (idx === -1) y = outer(cards[cards.length - 1]).getBoundingClientRect().bottom + 3;
+    else if (idx === 0) y = outer(cards[0]).getBoundingClientRect().top - 3;
+    else y = (outer(cards[idx - 1]).getBoundingClientRect().bottom + outer(cards[idx]).getBoundingClientRect().top) / 2;
+    line.hidden = false;
+    line.style.top = `${Math.round(y - base)}px`;
+  }
+  const schedNow = () => { clearTimeout(nowT); nowT = setTimeout(placeNow, 120); };
+  setInterval(placeNow, 30e3);
+  addEventListener("resize", schedNow);
+  addEventListener("load", schedNow, true); // nachgeladene Bilder verschieben die Karten
+  new MutationObserver((muts) => { if (muts.some((m) => !(m.target.closest && m.target.closest(".crlf-nowline")))) schedNow(); })
+    .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
 
   async function run(force) {
     msg.replaceChildren(L.load);
