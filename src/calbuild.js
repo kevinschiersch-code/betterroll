@@ -6,7 +6,6 @@
 // crcatalog.js (keine Cookies, kein Konto). Künftige Folgen der Woche werden aus der letzten Folge + 7 Tage geschätzt.
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
-  try { window.stop(); } catch (e) {}
 
   // alte Adresse wiederherstellen (Sprache aus p=, sonst aus dem Browser)
   const q = new URLSearchParams(location.search);
@@ -239,8 +238,13 @@
   }
   // crcatalog.js wird nach diesem Skript geladen: erst danach starten
   setTimeout(run, 0);
-  // Reste von robots.txt, falls der Browser nach window.stop() noch Text angehängt hat
-  const dropPre = () => { for (const p of document.querySelectorAll("body > pre, html > pre")) p.remove(); };
+  // Inhalt von robots.txt: der Browser legt dafür eigene head/body/pre hinter unseren an; die wieder entfernen.
+  // (Kein window.stop(): danach zeichnete Chrome die Seite nie, requestAnimationFrame lief nicht.)
+  const ownHead = document.head, ownBody = document.body;
+  const dropPre = () => {
+    for (const c of [...document.documentElement.children]) if (c !== ownHead && c !== ownBody) c.remove();
+    for (const p of ownBody.querySelectorAll(":scope > pre")) p.remove();
+  };
   addEventListener("DOMContentLoaded", dropPre, { once: true });
   setTimeout(dropPre, 500);
 })();
