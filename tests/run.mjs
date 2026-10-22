@@ -87,6 +87,7 @@ const TYPES = { ".js": "text/javascript", ".css": "text/css", ".html": "text/htm
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split("?")[0]);
   if (SLOW[url]) return setTimeout(() => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(SLOW[url]); }, 700);
+  if (url === "/robots.txt") { res.writeHead(200, { "Content-Type": "text/plain" }); return res.end("User-agent: *\nDisallow: /x\n"); }
   if (pages[url]) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(pages[url]()); }
   const file = path.join(ROOT, url);
   if (!file.startsWith(SRC) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
@@ -137,7 +138,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const before = line.textContent.includes("Verfügbar");
     const tag = card.querySelector(".crlf-tag"), talk0 = line.querySelector(".crlf-btn-talk");
     const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
-    const oneRow = !!(tag && line.contains(tag) && line.firstElementChild.contains(tag) && Math.abs(mid(tag) - mid(talk0)) < 4);
+    const oneRow = !!(tag && line.contains(tag) && !!(tag.compareDocumentPosition(talk0) & Node.DOCUMENT_POSITION_FOLLOWING) && Math.abs(mid(tag) - mid(talk0)) < 4);
     const fresh = document.createElement("div");
     fresh.className = "episode";
     fresh.innerHTML = "<span>Folge 9</span> <span>Verfügbar</span>";
@@ -147,7 +148,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     return { before, oneRow, tagBack: !!(now && now.querySelector(".crlf-tag")), talk: !!(now && now.querySelector(".crlf-btn-talk")), avail: now ? now.textContent.includes("Verfügbar") : true };
   });
   ok("„Verfügbar“ aus der Folgen-Zeile entfernt", !redraw.before);
-  ok("Sprache, Folge und 💬 in einer Zeile", redraw.oneRow);
+  ok("Folge, Sprache und 💬 in einer Zeile", redraw.oneRow);
   ok("Neu gezeichnete Folgen-Zeile sofort repariert (kein Flackern)", redraw.talk && redraw.tagBack && !redraw.avail, JSON.stringify(redraw));
 
   // neue Teile der Seite (z. B. Vorschau beim Überfahren) lösen einen Einfärbe-Lauf aus: dabei dürfen auf den
@@ -358,6 +359,67 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
+
+// ===== 1b. Eigener Kalender (calbuild.js): /simulcastcalendar wird per Regel auf /robots.txt?simulcastcalendar umgeleitet =====
+{
+  const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  // Content-Scripts der Kalender-Gruppen (document_start) in Manifest-Reihenfolge, davor Chrome-Ersatz und nachgestellter Katalog
+  const mf = JSON.parse(fs.readFileSync(path.join(SRC, "manifest.json"), "utf8"));
+  const files = [...new Set(mf.content_scripts.filter((c) => c.matches.some((m) => m.includes("simulcastcalendar"))).flatMap((c) => c.js))];
+  const now = Date.now(), H = 36e5, D = 864e5;
+  const SEED = `if (!sessionStorage.getItem("init")) { sessionStorage.setItem("init", "1"); sessionStorage.setItem("st_sync", JSON.stringify({ language: "de", merge: true })); }`;
+  const MOCK = `(() => {
+    window.__calls = [];
+    const now = ${now}, H = ${H}, D = ${D}, iso = (t) => new Date(t).toISOString();
+    const ep = (id, n, t, season) => ({ id, episode_number: n, slug_title: "folge-" + n, premium_available_date: iso(t), season_title: season, series_slug_title: "anime-a",
+      images: { thumbnail: [[{ source: "/slow/thumb.png", width: 320, height: 180 }]] } });
+    const J = (o) => new Response(JSON.stringify(o));
+    window.fetch = async (url) => {
+      url = String(url); window.__calls.push(url);
+      if (url === "/" || url === "/de/") return new Response('<script>x={anonClientId:"anon-id",anonClientSecret:""}</script>');
+      if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
+      if (url.startsWith("/content/v2/discover/browse")) return J({ data: url.includes("seasonal_tag=") && !window.__browsed++ ? [{ id: "GA", title: "Anime A", slug_title: "anime-a", last_public: iso(now - H) }] : [] });
+      if (url.startsWith("/content/v2/cms/series/GA/seasons")) return J({ data: [{ id: "SJ", title: "Anime A", season_number: 1, season_sequence_number: 1,
+        versions: [{ audio_locale: "ja-JP", guid: "SJ" }, { audio_locale: "de-DE", guid: "SD" }] }] });
+      if (url.startsWith("/content/v2/cms/seasons/SJ/episodes")) return J({ data: [ep("EJ3", 3, now - 6.5 * D, "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A")] });
+      if (url.startsWith("/content/v2/cms/seasons/SD/episodes")) return J({ data: [ep("ED3", 3, now - 3 * H, "Anime A")] });
+      if (url.startsWith("/content/v2/cms/objects/")) return J({ data: [] });
+      return new Response("", { status: 404 });
+    };
+    window.__browsed = 0;
+  })();`;
+  // Content-Scripts bei document_start sehen schon <html>; Init-Skripte von Playwright laufen davor: kurz darauf warten
+  const code = JSON.stringify(files.map((f) => fs.readFileSync(path.join(SRC, f), "utf8")).join("\n;\n"));
+  await page.addInitScript({ content: SEED + "\n" + STUB + "\n" + MOCK + `\n(() => { const go = () => (0, eval)(${code});
+    if (document.documentElement) go(); else new MutationObserver((m, o) => { if (document.documentElement) { o.disconnect(); go(); } }).observe(document, { childList: true }); })();` });
+  await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/");
+  await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  const st = await page.evaluate(() => ({
+    path: location.pathname + location.search,
+    days: document.querySelectorAll("section.day").length,
+    pre: document.querySelectorAll("pre").length,
+    cards: [...document.querySelectorAll("article.release")].map((a) => ({ t: (c => c.dataset.crlfTitle || c.textContent)(a.querySelector("cite")), ep: a.querySelector(".episode").textContent.trim(),
+      soon: a.classList.contains("crlf-soon"), link: (a.querySelector("a[href*='/watch/']") || {}).getAttribute?.("href") || "", btns: !!a.querySelector(".crlf-actions") })),
+    msg: (document.querySelector(".crlf-calmsg") || {}).textContent || "",
+  }));
+  const week0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); })();
+  const inWeek = (t) => t >= week0 && t < week0 + 7 * D;
+  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H].filter(inWeek).length;
+  ok("Eigener Kalender: alte Adresse, 7 Tage, kein robots-Text", st.path === "/de/simulcastcalendar" && st.days === 7 && st.pre === 0, JSON.stringify({ path: st.path, days: st.days, pre: st.pre, msg: st.msg }));
+  ok("Eigener Kalender: Folgen aus dem Katalog, Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
+    && (!inWeek(now - 3 * H) || st.cards.some((c) => c.t === "Anime A (German Dub)")) && st.cards.filter((c) => !c.soon).every((c) => /\/de\/watch\/E/.test(c.link)), JSON.stringify(st.cards));
+  ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
+  await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
+  await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
+  const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover") || u.includes("/cms/series") || u.includes("/cms/seasons")).length,
+    cards: document.querySelectorAll("article.release").length }));
+  ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
+  ok("Eigener Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
 
