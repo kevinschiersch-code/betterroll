@@ -6,18 +6,23 @@
 // Nur wer danach selbst in einen schon übersprungenen Abschnitt zurückspult, sieht ihn (jede Folge merkt sich die
 // Zeitspannen der erledigten Abschnitte).
 // Keine Schnittstelle, kein Netzverkehr. Schalter: Einstellung autoSkip (ab Werk an).
+// Dazu (unabhängig von autoSkip, nur Hauptschalter): Hängt der Player in den letzten Sekunden einer Folge fest (Video
+// „spielt“, die Zeit steht aber 1,5 s still, „ended“ kommt nie, die nächste Folge startet nicht), wird ans Ende
+// gesprungen; hilft das nicht, bekommt der Player das fehlende „ended“ selbst gemeldet. Je Folge höchstens einmal.
 (() => {
   const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
   const VERB = /skip|überspring/i;
   const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
-  let on = true, timer = 0;
+  const END_S = 3, STALL_MS = 1500;
+  let on = true, active = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
   let state = new WeakMap();
   let seen = [], episode = "", lastClick = 0; // erledigte Abschnitte { start, end } dieser Folge
+  let stuck = { at: -1, since: 0, step: 0, when: 0 }; // Hänger am Folgenende: letzte Zeit, seit wann still, Schritt
   const handled = (t) => seen.some((x) => t >= x.start - 3 && t <= x.end + 3);
 
   // Schalter lesen (Hauptschalter und autoSkip)
-  const load = () => chrome.storage.sync.get({ active: true, autoSkip: true }, (s) => { on = s.active && s.autoSkip; arm(); });
+  const load = () => chrome.storage.sync.get({ active: true, autoSkip: true }, (s) => { active = s.active; on = s.active && s.autoSkip; arm(); });
   load();
   chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && (c.active || c.autoSkip)) load(); });
 
@@ -26,7 +31,7 @@
   const own = (v) => v.closest(".crlf-video-layer, #crlf-video"); // eigenes Hintergrundvideo im Kalender
   const playing = () => [...document.querySelectorAll("video")].find((v) => !own(v) && !v.paused && !v.ended);
   function arm() {
-    const run = on && !!playing();
+    const run = active && !!playing();
     if (run && !timer) timer = setInterval(check, 250);
     else if (!run && timer) { clearInterval(timer); timer = 0; }
   }
@@ -50,6 +55,8 @@
     if (!video) return arm(); // Video weg oder angehalten: schlafen bis zum nächsten Start
     watch(video);
     const now = Date.now(), t = video.currentTime;
+    atEnd(video, now, t);
+    if (!on) return;
     const list = document.querySelectorAll('[data-testid*="skip" i], button, [role="button"]');
     for (let el of list) {
       if (el.closest("[data-crlf-speed]")) continue;
@@ -85,7 +92,18 @@
   // neue Folge = Liste leeren
   function watch(video) {
     const key = location.href + "|" + (video.currentSrc || "");
-    if (key !== episode) { episode = key; seen = []; state = new WeakMap(); }
+    if (key !== episode) { episode = key; seen = []; state = new WeakMap(); stuck = { at: -1, since: 0, step: 0, when: 0 }; }
+  }
+
+  // Hänger am Folgenende lösen: erst ans Ende springen, 1,5 s später notfalls „ended“ melden (Autoplay der nächsten Folge)
+  function atEnd(video, now, t) {
+    const d = video.duration;
+    if (!isFinite(d) || d < 60 || d - t > END_S || stuck.step >= 2) { stuck.at = -1; return; }
+    if (Math.abs(t - stuck.at) > 0.01) { stuck.at = t; stuck.since = now; return; } // läuft noch
+    if (now - stuck.since < STALL_MS || now - stuck.when < STALL_MS) return;
+    stuck.when = now; stuck.step++;
+    if (stuck.step === 1) { try { video.currentTime = d; } catch (e) { /* Player lässt nicht spulen */ } }
+    else if (!video.ended) video.dispatchEvent(new Event("ended"));
   }
 
   // eigentlicher Knopf zum Treffer: umgebender Knopf, sonst ein Knopf darin, sonst der Treffer selbst

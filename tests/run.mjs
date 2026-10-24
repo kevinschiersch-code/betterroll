@@ -514,6 +514,26 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Auto-Skip (Spulen) ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
+// ===== 3c. Player hängt in der letzten Sekunde (spielt, Zeit steht, kein „ended“): ans Ende springen, sonst „ended“ melden =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/video.html");
+  await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1419.6; window.__seeks = []; window.__ended = 0;
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { __seeks.push(x); pos = Math.min(x, 1419.9); } }); // Sprung landet knapp davor
+    v.addEventListener("ended", () => __ended++);
+    return v.play(); });
+  await page.waitForTimeout(2200);
+  const seeks = await page.evaluate("__seeks.slice()");
+  await page.waitForTimeout(2000);
+  const ended = await page.evaluate("__ended");
+  ok("Folgenende: Hänger springt ans Ende", seeks.length === 1 && seeks[0] === 1420, JSON.stringify(seeks));
+  ok("Folgenende: danach „ended“ gemeldet (nächste Folge)", ended === 1, `${ended}x`);
+  ok("Folgenende ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
 await browser.close();
 server.close();
 
