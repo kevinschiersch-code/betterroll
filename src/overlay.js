@@ -11,6 +11,9 @@
 (() => {
   let on = true, userAt = 0, timer = 0;
   const tried = new WeakSet(); // Ebenen, die schon einmal geschlossen werden sollten
+  // Auf Folgenseiten erst nach 12 s schließen: Am Folgenende zeigt die Seite dort evtl. den Übergang zur nächsten Folge
+  // (Autoplay); geht es weiter, ist der Dialog bis dahin von selbst weg. Nach der letzten Folge geht er danach zu.
+  const WATCH_WAIT = 12e3, firstSeen = new WeakMap();
   const CLOSE_RE = /^(close|schlie(ß|ss)en|dismiss|×|✕|✖|x)$|close|schlie(ß|ss)en|dismiss/i;
   chrome.storage.sync.get({ active: true, autoClose: true }, (s) => { on = s.active && s.autoClose; check(); });
   chrome.storage.onChanged.addListener((c, area) => {
@@ -67,7 +70,7 @@
   // (ab 200×150 px). Erscheint ein Dialog kurz nach eigenem Klick/Tippen, hat man ihn selbst geöffnet: dann bleibt er.
   function dialogs(userOpened) {
     for (const d of document.querySelectorAll('dialog, [role="dialog"], [role="alertdialog"], [aria-modal="true"]')) {
-      if (d.tagName === "DIALOG" && !d.open) { tried.delete(d); continue; } // zu: beim nächsten Öffnen neu prüfen
+      if (d.tagName === "DIALOG" && !d.open) { tried.delete(d); firstSeen.delete(d); continue; } // zu: beim nächsten Öffnen neu prüfen
       if (tried.has(d) || !visible(d)) continue;
       const r = d.getBoundingClientRect();
       if (r.width < 200 || r.height < 150) continue;
@@ -75,6 +78,10 @@
       if (excluded(d) || d.querySelector(FIELDS)) { tried.add(d); continue; }
       const btn = closeButton(d, r);
       if (!btn) continue;
+      if (/\/watch\//.test(location.pathname)) {
+        if (!firstSeen.has(d)) { firstSeen.set(d, Date.now()); setTimeout(check, WATCH_WAIT + 100); }
+        if (Date.now() - firstSeen.get(d) < WATCH_WAIT) continue;
+      }
       close(d, btn);
       return true;
     }
@@ -96,6 +103,10 @@
       if (el.querySelector(FIELDS) || SKIP_RE.test(ident(el))) continue;
       const btn = closeButton(el, r);
       if (!btn) continue;
+      if (/\/watch\//.test(location.pathname)) {
+        if (!firstSeen.has(el)) { firstSeen.set(el, Date.now()); setTimeout(check, WATCH_WAIT + 100); }
+        if (Date.now() - firstSeen.get(el) < WATCH_WAIT) continue;
+      }
       close(el, btn);
       return;
     }

@@ -71,7 +71,13 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   window.__ticks = 0; const si = window.setInterval; window.setInterval = (f, ms) => si(() => { window.__ticks++; f(); }, ms);
   window.__clicks = 0;</script></head><body><video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
   <button id="sk" style="display:none;width:120px;height:30px" onclick="__clicks++;v.currentTime+=3">Intro überspringen</button>
-  <script src="/src/skip.js"></script></body></html>` };
+  <script src="/src/skip.js"></script></body></html>`,
+  "/de/watch/AAA111/folge-1": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <video id="v" src="/src/backgrounds/haus_1.webm" muted width="320" height="180"></video>
+  <section><h4>Nächste Folge</h4><a href="/de/watch/BBB222/folge-2">Folge 2</a></section>
+  <section><h4>Vorherige Folge</h4><a href="/de/watch/ZZZ000/folge-0">Folge 0</a></section>
+  <script src="/src/skip.js"></script></body></html>`,
+  "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>" };
 // langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
 import zlib from "zlib";
 function png(w, h) {
@@ -532,6 +538,22 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Folgenende: Hänger springt ans Ende", seeks.length === 1 && seeks[0] === 1420, JSON.stringify(seeks));
   ok("Folgenende: danach „ended“ gemeldet (nächste Folge)", ended === 1, `${ended}x`);
   ok("Folgenende ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
+// ===== 3d. Folge zu Ende, Seite bleibt stehen: BetterRoll öffnet nach 8 s die nächste Folge =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/de/watch/AAA111/folge-1");
+  await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
+    v.dispatchEvent(new Event("ended")); });
+  await page.waitForTimeout(5000);
+  const early = page.url();
+  await page.waitForTimeout(4000);
+  ok("Nächste Folge: wartet erst auf die Seite", /AAA111/.test(early), early);
+  ok("Nächste Folge: danach selbst geöffnet", /\/watch\/BBB222\//.test(page.url()), page.url());
+  ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
 await browser.close();
