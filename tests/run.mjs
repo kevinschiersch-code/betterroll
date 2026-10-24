@@ -81,7 +81,8 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
   <button aria-label="Vorherige Folge" onclick="__prev++">⏮</button><button aria-label="Nächste Folge" onclick="__next++">⏭</button>
-  <script>window.__prev = 0; window.__next = 0;</script><script src="/src/skip.js"></script></body></html>` };
+  <button id="ab" style="display:none;width:160px;height:30px" onclick="__ab++">Abspann überspringen</button>
+  <script>window.__prev = 0; window.__next = 0; window.__ab = 0;</script><script src="/src/skip.js"></script></body></html>` };
 // langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
 import zlib from "zlib";
 function png(w, h) {
@@ -562,6 +563,16 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const btn = await page.evaluate("[__next, __prev]");
   ok("Nächste Folge: vor der letzten Sekunde nichts", before === 0, `${before}x`);
   ok("Nächste Folge: Knopf in der letzten Sekunde gedrückt (einmal)", btn[0] === 1 && btn[1] === 0, JSON.stringify(btn));
+  // Abspann-Knopf gegen Ende: statt überspringen gleich „Nächste Folge“
+  await page.reload();
+  await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1330;
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
+    document.getElementById("ab").style.display = "block";
+    return v.play(); });
+  await page.waitForTimeout(1500);
+  const outro = await page.evaluate("[__next, __ab]");
+  ok("Nächste Folge: beim Abspann-Knopf gleich weiter statt überspringen", outro[0] === 1 && outro[1] === 0, JSON.stringify(outro));
   await page.goto(BASE + "/de/watch/AAA111/folge-1");
   await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
     v.dispatchEvent(new Event("ended")); });

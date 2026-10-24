@@ -13,6 +13,9 @@
 // Sekunde, obigem Hänger) drückt BetterRoll sofort den Knopf „Nächste Folge“, wenn es einen gibt; sonst öffnet es den
 // Link „Nächste Folge“ unter dem Player. Nach der letzten Folge (weder Knopf noch Link) passiert nichts. Der
 // Player-Rahmen meldet das Ende per postMessage an die Seite, die die Adresse kennt.
+// Abspann gegen Ende einer Folge: Gibt es den Knopf „Nächste Folge“, wird statt „Abspann überspringen“ gleich dieser
+// gedrückt (der Sprung ans Ende ließ den Player oft hängen). Hängt es nach einem Abspann-Sprung, geht es ebenso weiter.
+// Was am Folgenende passiert, steht zum Nachvollziehen im Popup unter „Letzte Fehler“ (Ort „Folgenende“).
 (() => {
   const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
   const VERB = /skip|überspring/i;
@@ -24,6 +27,11 @@
   let state = new WeakMap();
   let seen = [], episode = "", lastClick = 0; // erledigte Abschnitte { start, end } dieser Folge
   let stuck = { at: -1, since: 0, step: 0, when: 0 }; // Hänger am Folgenende: letzte Zeit, seit wann still, Schritt
+  let outro = false; // Abspann dieser Folge schon per Knopf übersprungen (danach hängt der Player oft am Ende)
+  const OUTRO = /credits|abspann|outro|ending/i;
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+  // Messung am Folgenende: Einträge unter „Letzte Fehler“ im Popup (Ort „Folgenende“), zum Nachvollziehen von Hängern
+  const note = (msg) => { try { chrome.runtime.sendMessage({ type: "crlf-error", where: "Folgenende", msg }).catch(() => {}); } catch (e) { /* Add-on neu geladen */ } };
   const handled = (t) => seen.some((x) => t >= x.start - 3 && t <= x.end + 3);
 
   // Schalter lesen (Hauptschalter und autoSkip)
@@ -70,7 +78,7 @@
     if (doneEp === episode) return;
     doneEp = episode;
     const btn = nextButton();
-    if (btn) return press(btn);
+    if (btn) { note(`Ende bei ${mmss(v.currentTime)}/${mmss(v.duration)}: Knopf „Nächste Folge“ gedrückt`); return press(btn); }
     if (window.top === window) return goNext();
     try { window.top.postMessage({ crlfEnded: 1 }, "https://www.crunchyroll.com"); } catch (e) { /* fremde Seite */ }
   }
@@ -81,8 +89,9 @@
     if (!on || !/\/watch\//.test(location.pathname) || planned === location.href) return;
     planned = location.href;
     const btn = nextButton();
-    if (btn) return press(btn);
+    if (btn) { note("Seite: Knopf „Nächste Folge“ gedrückt"); return press(btn); }
     const a = nextLink();
+    note(a ? "Seite: Link „Nächste Folge“ geöffnet" : "kein Knopf und kein Link „Nächste Folge“ gefunden");
     if (a) location.assign(a);
   }
   // Link zur nächsten Folge: Überschrift „Nächste Folge“ o. Ä., darüber der kleinste Kasten mit einem /watch/-Link zu
@@ -121,7 +130,9 @@
     const now = Date.now(), t = video.currentTime;
     atEnd(video, now, t);
     if (!on) return;
-    if (video.duration > 60 && video.duration - t <= 1) return finished(video); // letzte Sekunde: weiter zur nächsten Folge
+    const d = video.duration;
+    // letzte Sekunde (nach übersprungenem Abspann: letzte 10 s): weiter zur nächsten Folge
+    if (d > 60 && (d - t <= 1 || (outro && d - t <= 10))) return finished(video);
     const list = document.querySelectorAll('[data-testid*="skip" i], button, [role="button"]');
     for (let el of list) {
       if (el.closest("[data-crlf-speed]")) continue;
@@ -141,6 +152,18 @@
       if (s.clickedAt && now - s.clickedAt < CHECK_MS) continue; // warten, ob der Player springt
       if (now - s.since < STABLE_MS) continue; // erst klicken, wenn der Knopf bereit ist
       if (now - lastClick < CHECK_MS) return; // nie zwei Klicks kurz hintereinander (Knopf und innerer Knopf)
+      // Abspann gegen Ende der Folge: lieber gleich „Nächste Folge“ drücken (Nutzerwunsch; der Sprung des
+      // Abspann-Knopfs ans Ende ließ den Player oft hängen). Ohne solchen Knopf wie gewohnt überspringen.
+      const isOutro = d > 60 && t > d / 2 && (OUTRO.test(text + " " + testid) || d - t < 300);
+      if (isOutro) {
+        const nb = nextButton();
+        if (nb) {
+          s.off = true; doneEp = episode; lastClick = now;
+          note(`Abspann bei ${mmss(t)}/${mmss(d)}: statt Überspringen Knopf „Nächste Folge“ gedrückt`);
+          press(nb);
+          return;
+        }
+      }
       lastClick = now;
       s.tries++; s.clickedAt = now;
       const from = t;
@@ -148,6 +171,7 @@
         if (Date.now() - now > 4000) return;
         s.off = true; // gesprungen: erledigt
         if (video.currentTime > from) seen.push({ start: from - 1, end: video.currentTime });
+        if (isOutro) { outro = true; note(`Abspann übersprungen: ${mmss(from)} → ${mmss(video.currentTime)} von ${mmss(d)} (kein Knopf „Nächste Folge“ im Player)`); }
       }, { once: true });
       press(el);
       return;
@@ -157,7 +181,7 @@
   // neue Folge = Liste leeren
   function watch(video) {
     const key = location.href + "|" + (video.currentSrc || "");
-    if (key !== episode) { episode = key; seen = []; state = new WeakMap(); stuck = { at: -1, since: 0, step: 0, when: 0 }; }
+    if (key !== episode) { episode = key; seen = []; state = new WeakMap(); stuck = { at: -1, since: 0, step: 0, when: 0 }; outro = false; }
   }
 
   // Hänger am Folgenende lösen: erst ans Ende springen, 1,5 s später notfalls „ended“ melden (Autoplay der nächsten Folge)
@@ -165,11 +189,13 @@
     const d = video.duration;
     // Daten zu Ende (die angegebene Länge kann etwas über dem letzten Bild liegen): in den letzten 15 s, nichts mehr gepuffert
     const b = video.buffered, dry = video.readyState < 3 && (!b.length || b.end(b.length - 1) - t < 0.5) && d - t <= 15;
-    if (!isFinite(d) || d < 60 || (d - t > END_S && !dry) || stuck.step >= 2) { stuck.at = -1; return; }
+    if (!isFinite(d) || d < 60 || (d - t > END_S && !dry && !(outro && d - t <= 30)) || stuck.step >= 2) { stuck.at = -1; return; }
     if (Math.abs(t - stuck.at) > 0.01) { stuck.at = t; stuck.since = now; return; } // läuft noch
     const wait = d - t > END_S ? 2 * STALL_MS : STALL_MS;
     if (now - stuck.since < wait || now - stuck.when < STALL_MS) return;
     stuck.when = now; stuck.step++;
+    note(`Hänger bei ${mmss(t)}/${mmss(d)} (Zustand ${video.readyState}${outro ? ", nach Abspann-Sprung" : ""})`);
+    if (on && outro) { stuck.step = 2; return finished(video); } // nach Abspann-Sprung: gleich zur nächsten Folge
     if (stuck.step === 1) { try { video.currentTime = d; } catch (e) { /* Player lässt nicht spulen */ } }
     else if (!video.ended) video.dispatchEvent(new Event("ended")); // kommt auch bei finished() an
   }
