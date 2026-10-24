@@ -4,6 +4,7 @@
 // im Aufbau der alten Seite nach (section.day > ol.releases > li > article.release), damit alle übrigen Teile von
 // BetterRoll unverändert darauf arbeiten. Daten aus dem öffentlichen Katalog mit dem anonymen Schlüssel aus
 // crcatalog.js (keine Cookies, kein Konto). Künftige Folgen der Woche werden aus der letzten Folge + 7 Tage geschätzt.
+// Laufende Wochen werden alle 6 Std. nachgezogen, dabei nur Serien, bei denen laut Katalog (last_public) etwas Neues kam.
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
 
@@ -15,7 +16,7 @@
   const rest = q.toString();
   history.replaceState(null, "", `/${loc ? loc + "/" : ""}simulcastcalendar${rest ? "?" + rest : ""}`);
 
-  const CAL_SERIES_TTL = 7 * 864e5, CAL_EPS_TTL = 7 * 864e5, CAL_WEEK_TTL = 7 * 864e5, CAL_WEEKS_KEPT = 8, CAL_PAR = 8;
+  const CAL_SERIES_TTL = 7 * 864e5, CAL_EPS_TTL = 7 * 864e5, CAL_WEEK_TTL = 7 * 864e5, CAL_LIVE_TTL = 6 * 36e5, CAL_WEEKS_KEPT = 8, CAL_PAR = 8;
   const DUB = { "de-DE": "German", "en-US": "English", "es-419": "Spanish", "es-ES": "Castilian", "pt-BR": "Portuguese", "pt-PT": "Portuguese (Portugal)",
     "fr-FR": "French", "it-IT": "Italian", "ru-RU": "Russian", "ar-SA": "Arabic", "hi-IN": "Hindi", "ta-IN": "Tamil", "te-IN": "Telugu",
     "zh-CN": "Chinese", "zh-HK": "Chinese", "zh-TW": "Chinese", "ko-KR": "Korean", "th-TH": "Thai", "id-ID": "Indonesian", "ms-MY": "Malay",
@@ -119,13 +120,14 @@
   };
   const relDate = (e) => e.premium_available_date || e.availability_starts || e.episode_air_date || "";
 
-  // Ganze Woche einmal abrufen und lokal speichern (calWeeks[Montag] = { t, items }); danach kommt der Kalender
-  // ohne Abruf aus dem Speicher. Neu geholt wird erst nach 7 Tagen oder mit „↻ Neu laden“.
+  // Ganze Woche abrufen und lokal speichern (calWeeks[Montag] = { t, items }); danach kommt der Kalender ohne Abruf
+  // aus dem Speicher. Eine Woche, die beim Abruf noch lief, wird nach 6 Std. nachgezogen (neue Folgen, Serienstarts,
+  // neue Staffeln, Verschiebungen), eine schon vorbei abgerufene nach 7 Tagen; sofort mit „↻ Neu laden“.
   const weekKey = ymd(start);
   async function cachedWeek(force) {
     const { calWeeks2: calWeeks = {} } = await chrome.storage.local.get("calWeeks2");
     const w = calWeeks[weekKey];
-    if (!force && w && Date.now() - w.t < CAL_WEEK_TTL) return w;
+    if (!force && w && Date.now() - w.t < (w.t < end.getTime() + 864e5 ? CAL_LIVE_TTL : CAL_WEEK_TTL)) return w;
     const items = await loadWeek(force);
     calWeeks[weekKey] = { t: Date.now(), items };
     for (const k of Object.keys(calWeeks).sort().slice(0, -CAL_WEEKS_KEPT)) delete calWeeks[k];
@@ -140,19 +142,20 @@
     const now = Date.now();
     chrome.storage.local.remove(["calCache", "calCache2", "calWeeks"]).catch(() => {}); // Zwischenspeicher der ersten Fassung
 
-    // Serien der Season (Woche) und der vorigen Season (laufende Zweiteiler)
-    const prevSeason = new Date(start.getFullYear(), start.getMonth() - 3, 1);
-    const tags = [...new Set([seasonTag(start), seasonTag(new Date(end - 1)), seasonTag(prevSeason)])];
-    const series = new Map();
+    // Serien der Season (Woche) und der drei Seasons davor (laufende Zwei- bis Vierteiler, Ganzjahresserien)
+    const tags = [...new Set([seasonTag(new Date(end - 1)), ...[0, 3, 6, 9].map((m) => seasonTag(new Date(start.getFullYear(), start.getMonth() - m, 1)))])];
+    const series = new Map(), lastPub = new Map();
     let lastErr = null;
     for (const tag of tags) {
       const found = [];
       try {
-        for (let off = 0; off < 400; off += 100) {
+        // weiterblättern, bis eine Seite leer ist: die Schnittstelle liefert u. U. weniger als n je Seite
+        for (let off = 0, page = 0; off < 600 && page < 12; page++) {
           const j = await api(`/content/v2/discover/browse?seasonal_tag=${tag}&n=100&start=${off}&locale=${locale}`);
           const data = (j && j.data) || [];
           found.push(...data);
-          if (data.length < 100 || (j.total && off + 100 >= j.total)) break;
+          off += data.length;
+          if (!data.length || (j.total && off >= j.total)) break;
         }
       } catch (e) { lastErr = e; }
       for (const s of found) {
@@ -160,36 +163,42 @@
         const last = Date.parse(s.last_public || (s.series_metadata && s.series_metadata.last_public) || "");
         if (!isNaN(last) && last < start - 21 * 864e5) continue; // seit Wochen nichts Neues: beendet
         series.set(s.id, s);
+        if (!isNaN(last)) lastPub.set(s.id, last);
       }
     }
+    // Zwischenspeicher gilt, solange er jünger als ttl ist und die Serie seitdem nichts Neues bekam
+    const fresh = (c, sid, ttl) => !!c && now - c.t < ttl && !(lastPub.get(sid) > c.t);
 
     if (!series.size && lastErr) throw lastErr;
 
     // je Serie die neueste Staffel jeder Sprachfassung
     const sids = [...series.keys()];
     await pool(sids, async (sid) => {
-      const c = cache.series[sid];
-      if (c && now - c.t < CAL_SERIES_TTL) return;
+      if (fresh(cache.series[sid], sid, CAL_SERIES_TTL)) return;
       const j = await api(`/content/v2/cms/series/${sid}/seasons?locale=${locale}`);
-      const best = new Map();
+      const best = new Map(), all = [];
       for (const s of (j && j.data) || []) {
         const n = s.season_sequence_number || s.season_number || 0;
         // Synchronfassungen stecken als eigene Staffel-IDs in versions[]
         const vers = Array.isArray(s.versions) && s.versions.length ? s.versions : [{ audio_locale: s.audio_locale, guid: s.id }];
         for (const v of vers) {
           const audio = v.audio_locale || "ja-JP", id = v.guid || v.season_guid || s.id;
+          const x = { id, title: s.title || "", audio, n, num: +s.season_display_number || s.season_number || n, count: s.number_of_episodes || 0 };
+          all.push(x);
           const o = best.get(audio);
-          if (!o || n > o.n) best.set(audio, { id, title: s.title || "", audio, n, num: +s.season_display_number || s.season_number || n, count: s.number_of_episodes || 0 });
+          if (!o || n > o.n) best.set(audio, x);
         }
       }
-      cache.series[sid] = { t: now, seasons: [...best.values()] };
+      // übrige Staffeln (neueste zuerst) für den Fall, dass die neueste nur angekündigt ist und die laufende davor liegt
+      const chosen = new Set([...best.values()].map((x) => x.id));
+      const alt = all.filter((x) => !chosen.has(x.id)).sort((a, b) => b.n - a.n).slice(0, 6);
+      cache.series[sid] = { t: now, seasons: [...best.values()], alt };
     });
 
     // Folgen dieser Staffeln (nur die letzten 60 Tage werden gemerkt)
-    const seasons = sids.flatMap((sid) => ((cache.series[sid] && cache.series[sid].seasons) || []).map((s) => ({ ...s, sid })));
-    await pool(seasons, async (s) => {
-      const c = cache.eps[s.id];
-      if (c && now - c.t < CAL_EPS_TTL && !(start < now - 60 * 864e5)) return;
+    let seasons = sids.flatMap((sid) => ((cache.series[sid] && cache.series[sid].seasons) || []).map((s) => ({ ...s, sid })));
+    const loadEps = (list) => pool(list, async (s) => {
+      if (fresh(cache.eps[s.id], s.sid, CAL_EPS_TTL) && !(start < now - 60 * 864e5)) return;
       const j = await api(`/content/v2/cms/seasons/${s.id}/episodes?locale=${locale}`);
       const list = [];
       for (const e of (j && j.data) || []) {
@@ -200,6 +209,27 @@
       }
       cache.eps[s.id] = { t: now, list: start < now - 60 * 864e5 ? list : list.filter((x) => x.d > now - 60 * 864e5) };
     });
+    await loadEps(seasons);
+
+    // Serie hat laut Katalog Neues, die gewählten Staffeln aber nicht (neueste Staffel erst angekündigt, Zählung der
+    // Staffeln schief): die übrigen Staffeln ansehen und die mit Folgen der letzten 3 Wochen dazunehmen
+    const newest = (id) => Math.max(0, ...((cache.eps[id] && cache.eps[id].list) || []).map((e) => e.d));
+    const lag = sids.filter((sid) => {
+      const c = cache.series[sid], lp = lastPub.get(sid);
+      if (!c || !(c.alt || []).length || !(lp > now - 21 * 864e5) || c.altFor === lp) return false;
+      return Math.max(0, ...c.seasons.map((s) => newest(s.id))) < lp - 36 * 36e5;
+    });
+    if (lag.length) {
+      const extra = lag.flatMap((sid) => cache.series[sid].alt.map((s) => ({ ...s, sid })));
+      await loadEps(extra);
+      for (const sid of lag) {
+        const c = cache.series[sid], add = c.alt.filter((s) => newest(s.id) > now - 21 * 864e5);
+        c.seasons = [...c.seasons, ...add];
+        c.alt = c.alt.filter((s) => !add.includes(s));
+        c.altFor = lastPub.get(sid);
+      }
+      seasons = sids.flatMap((sid) => ((cache.series[sid] && cache.series[sid].seasons) || []).map((s) => ({ ...s, sid })));
+    }
 
     // aufräumen: nur Einträge der aktuellen Serien/Staffeln behalten
     const keepS = new Set(seasons.map((s) => s.id)), keepSer = new Set(sids);
