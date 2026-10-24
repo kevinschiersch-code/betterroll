@@ -9,15 +9,15 @@
 // Dazu (unabhängig von autoSkip, nur Hauptschalter): Hängt der Player in den letzten Sekunden einer Folge fest (Video
 // „spielt“, die Zeit steht aber 1,5 s still, „ended“ kommt nie, die nächste Folge startet nicht), wird ans Ende
 // gesprungen; hilft das nicht, bekommt der Player das fehlende „ended“ selbst gemeldet. Je Folge höchstens einmal.
-// Nächste Folge (mit autoSkip): Ist die Folge zu Ende (ended, Pause in der letzten Sekunde oder obiger Hänger) und die
-// Seite nach 8 s noch dieselbe, öffnet BetterRoll selbst die nächste Folge (Link „Nächste Folge“ der Seite). Nicht,
-// wenn man in der Zeit selbst klickt/tippt, und nicht nach der letzten Folge (kein solcher Link). Der Player-Rahmen
-// meldet das Ende per postMessage an die Seite, die die Adresse kennt.
+// Nächste Folge (mit autoSkip, Nutzerwunsch): In der letzten Sekunde einer Folge (oder bei ended, Pause in der letzten
+// Sekunde, obigem Hänger) drückt BetterRoll sofort den Knopf „Nächste Folge“, wenn es einen gibt; sonst öffnet es den
+// Link „Nächste Folge“ unter dem Player. Nach der letzten Folge (weder Knopf noch Link) passiert nichts. Der
+// Player-Rahmen meldet das Ende per postMessage an die Seite, die die Adresse kennt.
 (() => {
   const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
   const VERB = /skip|überspring/i;
   const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
-  const END_S = 3, STALL_MS = 1500, NEXT_MS = 8000;
+  const END_S = 3, STALL_MS = 1500;
   const NEXT_RE = /^(nächste folge|next episode|up next|als nächstes|siguiente episodio|épisode suivante|prossimo episodio|próximo episódio)$/i;
   let on = true, active = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
@@ -51,24 +51,39 @@
   }
 
   // ===== Nächste Folge =====
-  let userAt = 0, planned = "";
-  for (const t of ["pointerdown", "keydown"]) addEventListener(t, (e) => { if (e.isTrusted) userAt = Date.now(); }, true);
+  // Je Folge einmal: erst den Knopf „Nächste Folge“ dieses Rahmens drücken; gibt es keinen, übernimmt die Seite
+  // (Knopf dort, sonst Link „Nächste Folge“ unter dem Player)
+  let doneEp = "", planned = "";
+  const NEXT_BTN = /(nächste|next)\s*(folge|episode)|up next|als nächstes/i;
+  function nextButton() {
+    for (const el of document.querySelectorAll('[data-testid*="next" i], button, [role="button"]')) {
+      if (el.closest('[data-crlf-speed], [class*="crlf-"]')) continue;
+      const text = label(el), testid = (el.getAttribute("data-testid") || "").toLowerCase();
+      if (text.length > 80 || /vorherig|previous|prev\b/i.test(text + " " + testid)) continue;
+      if (/next[-_ ]?(episode|video)|up[-_ ]?next/.test(testid) || NEXT_BTN.test(text)) return target(el);
+    }
+    return null;
+  }
   function finished(v) {
-    if (!(v.duration > 60)) return;
-    if (window.top === window) return planNext();
+    if (!on || !(v.duration > 60)) return;
+    watch(v);
+    if (doneEp === episode) return;
+    doneEp = episode;
+    const btn = nextButton();
+    if (btn) return press(btn);
+    if (window.top === window) return goNext();
     try { window.top.postMessage({ crlfEnded: 1 }, "https://www.crunchyroll.com"); } catch (e) { /* fremde Seite */ }
   }
   if (window.top === window) addEventListener("message", (e) => {
-    if ((e.origin === "https://static.crunchyroll.com" || e.origin === location.origin) && e.data && e.data.crlfEnded) planNext();
+    if ((e.origin === "https://static.crunchyroll.com" || e.origin === location.origin) && e.data && e.data.crlfEnded) goNext();
   });
-  function planNext() {
+  function goNext() {
     if (!on || !/\/watch\//.test(location.pathname) || planned === location.href) return;
-    const href = planned = location.href, since = Date.now();
-    setTimeout(() => {
-      if (!on || location.href !== href || userAt > since) return; // Seite schon weiter oder selbst bedient
-      const a = nextLink();
-      if (a) location.assign(a);
-    }, NEXT_MS);
+    planned = location.href;
+    const btn = nextButton();
+    if (btn) return press(btn);
+    const a = nextLink();
+    if (a) location.assign(a);
   }
   // Link zur nächsten Folge: Überschrift „Nächste Folge“ o. Ä., darüber der kleinste Kasten mit einem /watch/-Link zu
   // einer anderen Folge
@@ -106,6 +121,7 @@
     const now = Date.now(), t = video.currentTime;
     atEnd(video, now, t);
     if (!on) return;
+    if (video.duration > 60 && video.duration - t <= 1) return finished(video); // letzte Sekunde: weiter zur nächsten Folge
     const list = document.querySelectorAll('[data-testid*="skip" i], button, [role="button"]');
     for (let el of list) {
       if (el.closest("[data-crlf-speed]")) continue;

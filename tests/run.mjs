@@ -77,7 +77,11 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   <section><h4>Nächste Folge</h4><a href="/de/watch/BBB222/folge-2">Folge 2</a></section>
   <section><h4>Vorherige Folge</h4><a href="/de/watch/ZZZ000/folge-0">Folge 0</a></section>
   <script src="/src/skip.js"></script></body></html>`,
-  "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>" };
+  "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>",
+  "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
+  <button aria-label="Vorherige Folge" onclick="__prev++">⏮</button><button aria-label="Nächste Folge" onclick="__next++">⏭</button>
+  <script>window.__prev = 0; window.__next = 0;</script><script src="/src/skip.js"></script></body></html>` };
 // langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
 import zlib from "zlib";
 function png(w, h) {
@@ -540,19 +544,29 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Folgenende ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
-// ===== 3d. Folge zu Ende, Seite bleibt stehen: BetterRoll öffnet nach 8 s die nächste Folge =====
+// ===== 3d. Letzte Sekunde der Folge: Knopf „Nächste Folge“ drücken, ohne Knopf den Link darunter öffnen =====
 {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/de/watch/CCC333/folge-3");
+  await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1300;
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
+    window.__jump = () => { pos = 1419.4; };
+    return v.play(); });
+  await page.waitForTimeout(800);
+  const before = await page.evaluate("__next");
+  await page.evaluate(() => __jump());
+  await page.waitForTimeout(1500);
+  const btn = await page.evaluate("[__next, __prev]");
+  ok("Nächste Folge: vor der letzten Sekunde nichts", before === 0, `${before}x`);
+  ok("Nächste Folge: Knopf in der letzten Sekunde gedrückt (einmal)", btn[0] === 1 && btn[1] === 0, JSON.stringify(btn));
   await page.goto(BASE + "/de/watch/AAA111/folge-1");
   await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
     v.dispatchEvent(new Event("ended")); });
-  await page.waitForTimeout(5000);
-  const early = page.url();
-  await page.waitForTimeout(4000);
-  ok("Nächste Folge: wartet erst auf die Seite", /AAA111/.test(early), early);
-  ok("Nächste Folge: danach selbst geöffnet", /\/watch\/BBB222\//.test(page.url()), page.url());
+  await page.waitForTimeout(1500);
+  ok("Nächste Folge: ohne Knopf den Link geöffnet", /\/watch\/BBB222\//.test(page.url()), page.url());
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
