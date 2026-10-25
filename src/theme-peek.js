@@ -215,7 +215,7 @@ function crlfPeek(pop) {
   const card = (pop.closest && pop.closest("article.release, .js-release")) || crlfHoverCard;
   if (!crlfTouch && card && !crlfWithin(card, 2) && !crlfWithin(crlfPeekEl, 14)) return true;
   const cite = card && card.querySelector("cite, .season-name, h1");
-  const a = crlfNorm(cite && (cite.dataset.crlfOrig || cite.textContent)).slice(0, 12), b = crlfNorm(d.name).slice(0, 12);
+  const a = crlfNorm(cite && (cite.dataset.crlfTitle || cite.textContent)).slice(0, 12), b = crlfNorm(d.name).slice(0, 12);
   // veraltet = gleicher Anime wie zuletzt gezeigt, aber andere Karte, deren Titel nicht passt
   const stale = crlfLastPeek.name === d.name && crlfLastPeek.card !== card;
   // sicherer: Serien-ID der Karte und der Vorschau vergleichen (auch wenn dazwischen ein anderer Anime kurz überfahren wurde)
@@ -524,7 +524,7 @@ function crlfPeekEarly(card) {
 // Vorschau-Daten direkt aus einer Kalenderkarte (Handy: die Seite zeigt ohne Maus keine eigene Vorschau)
 function crlfPeekFromCard(card) {
   const cite = card.querySelector("cite, .season-name, h1");
-  const raw = ((cite && (cite.dataset.crlfOrig || cite.textContent)) || "").trim();
+  const raw = ((cite && (cite.dataset.crlfTitle || cite.textContent)) || "").trim();
   if (!raw) return null;
   const sp = typeof crSplitSeason === "function" ? crSplitSeason(typeof crStripLanguage === "function" ? crStripLanguage(raw) : raw) : { title: raw };
   const img = [...card.querySelectorAll("img")].map(crlfImgInfo).filter((o) => o.src && o.img.getBoundingClientRect().width > 20).sort((a, b) => b.w * b.h - a.w * a.h)[0];

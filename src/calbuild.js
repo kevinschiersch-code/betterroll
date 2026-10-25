@@ -140,7 +140,6 @@
     const { calCache3: calCache = {} } = force ? {} : await chrome.storage.local.get("calCache3");
     const cache = { series: calCache.series || {}, eps: calCache.eps || {} };
     const now = Date.now();
-    chrome.storage.local.remove(["calCache", "calCache2", "calWeeks"]).catch(() => {}); // Zwischenspeicher der ersten Fassung
 
     // Serien der Season (Woche) und der drei Seasons davor (laufende Zwei- bis Vierteiler, Ganzjahresserien)
     const tags = [...new Set([seasonTag(new Date(end - 1)), ...[0, 3, 6, 9].map((m) => seasonTag(new Date(start.getFullYear(), start.getMonth() - m, 1)))])];

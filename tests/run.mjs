@@ -283,7 +283,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.evaluate(() => crlfPeekClose());
 
   // Seite liefert keine Beschreibung (nur „Staffel 4“): Ersatz von AniList in den Platzhalter
-  await page.evaluate(() => { window.crlfAniListJob = () => Promise.resolve({ desc: "An English description from AniList that is long enough." }); });
+  // gemerkte Vorschau-Daten früherer Schritte (gleiche Serie an mehreren Tagen) würden die Beschreibung schon liefern
+  await page.evaluate(() => { crlfPeekMem.clear(); window.crlfAniListJob = () => Promise.resolve({ desc: "An English description from AniList that is long enough." }); });
   const card3 = page.locator(".crlf-item:visible").nth(8);
   await card3.scrollIntoViewIfNeeded();
   const b3 = await card3.boundingBox();
@@ -306,6 +307,15 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   });
   ok("Vorschau: ohne Beschreibung der Seite Ersatz von AniList", /English description/.test(al.text) && /AniList/.test(al.text) && !al.ph && al.same, JSON.stringify(al));
   await page.evaluate(() => crlfPeekClose());
+  // aufgeräumter Titel („Staffel 2“ steht als Abzeichen): die Vorschau aus der Karte nimmt den Originaltitel samt Staffel
+  const fromCard = await page.evaluate(() => {
+    const card = document.createElement("article");
+    card.className = "release";
+    card.innerHTML = `<cite data-crlf-title="Testanime Staffel 3 (German Dub)">Testanime</cite>`;
+    const d = crlfPeekFromCard(card);
+    return { name: d && d.name, season: d && d.season };
+  });
+  ok("Vorschau aus der Karte: Staffel aus dem Originaltitel", fromCard.season >= 2 && !/Staffel/.test(fromCard.name || "Staffel"), JSON.stringify(fromCard));
 
   // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
   const cat = await page.evaluate(async () => {
