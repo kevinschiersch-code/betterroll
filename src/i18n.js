@@ -90,6 +90,8 @@ var CRLF_EN = {
   "Wiedergabe": "Playback",
   "Geschwindigkeit": "Speed",
   "Tempo im Menü „1x“, Tasten − / +": "Speed in the “1x” menu, keys − / +",
+  "Spul-Knöpfe": "Skip buttons",
+  "−1:30, −30 s, +1:30 in der Player-Leiste": "−1:30, −30 s, +1:30 in the player bar",
   "Auto-Skip": "Auto-skip",
   "Intro, Rückblick und Abspann überspringen": "Skip intro, recap and credits",
   "Einblendungen": "Overlays",
