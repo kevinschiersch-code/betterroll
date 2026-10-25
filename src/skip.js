@@ -14,14 +14,15 @@
 // Link „Nächste Folge“ unter dem Player. Nach der letzten Folge (weder Knopf noch Link) passiert nichts. Der
 // Player-Rahmen meldet das Ende per postMessage an die Seite, die die Adresse kennt.
 // Abspann: wird wie Intro über den Knopf des Players übersprungen; was danach noch kommt (Teaser, Szene nach dem
-// Abspann), läuft ganz normal bis zur letzten Sekunde. Bleibt der Player nach dem Abspann-Sprung aber stehen (Zeit 4 s
-// still oder von selbst angehalten, ohne eigenen Klick), geht es gleich zur nächsten Folge (Nutzerwunsch).
+// Abspann), läuft ganz normal bis zur letzten Sekunde. Bleibt der Player nach dem Abspann-Sprung stehen (Zeit 2,5 s
+// still), wird er einmal angestoßen (minimal weiterspringen + abspielen); steht er weitere 3 s oder hält von selbst an
+// (ohne eigenen Klick), geht es zur nächsten Folge (Nutzerwunsch).
 // Was am Folgenende passiert, steht zum Nachvollziehen im Popup unter „Letzte Fehler“ (Ort „Folgenende“).
 (() => {
   const WHAT = /intro|opening|vorspann|recap|rückblick|zusammenfassung|credits|abspann|outro|ending/i;
   const VERB = /skip|überspring/i;
   const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
-  const END_S = 3, STALL_MS = 1500, OUTRO_STALL_MS = 4000;
+  const END_S = 3, STALL_MS = 1500, OUTRO_NUDGE_MS = 2500, OUTRO_STALL_MS = 3000;
   const NEXT_RE = /^(nächste folge|nächste episode|next episode|up next|als nächstes|siguiente episodio|épisode suivante|prossimo episodio|próximo episódio)$/i;
   let on = true, active = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
@@ -156,6 +157,7 @@
         state.set(el, s);
       }
       if (s.off || s.tries >= TRIES) continue;
+      if (video.seeking) return; // Player springt noch (langsames Laden): nicht erneut klicken
       if (s.clickedAt && now - s.clickedAt < CHECK_MS) continue; // warten, ob der Player springt
       if (now - s.since < STABLE_MS) continue; // erst klicken, wenn der Knopf bereit ist
       if (now - lastClick < CHECK_MS) return; // nie zwei Klicks kurz hintereinander (Knopf und innerer Knopf)
@@ -163,11 +165,13 @@
       lastClick = now;
       s.tries++; s.clickedAt = now;
       const from = t;
-      video.addEventListener("seeked", () => {
+      // „seeking“ kommt sofort mit dem Ziel, auch wenn das Laden dauert (auf „seeked“ zu warten, ließ bei langsamem
+      // Laden den Abspann-Merker aus und den Knopf ein zweites Mal drücken)
+      video.addEventListener("seeking", () => {
         if (Date.now() - now > 4000) return;
         s.off = true; // gesprungen: erledigt
         if (video.currentTime > from) seen.push({ start: from - 1, end: video.currentTime });
-        if (isOutro) { outro = true; note(`Abspann übersprungen: ${mmss(from)} → ${mmss(video.currentTime)} von ${mmss(d)} `); }
+        if (isOutro) { outro = true; note(`Abspann übersprungen: ${mmss(from)} → ${mmss(video.currentTime)} von ${mmss(d)}`); }
       }, { once: true });
       press(el);
       return;
@@ -187,11 +191,18 @@
     const b = video.buffered, dry = video.readyState < 3 && (!b.length || b.end(b.length - 1) - t < 0.5) && d - t <= 15;
     if (!isFinite(d) || d < 60 || (d - t > END_S && !dry && !outro) || stuck.step >= 2) { stuck.at = -1; return; }
     if (Math.abs(t - stuck.at) > 0.01) { stuck.at = t; stuck.since = now; return; } // läuft noch
-    const wait = outro && d - t > END_S ? OUTRO_STALL_MS : d - t > END_S ? 2 * STALL_MS : STALL_MS; // nach dem Sprung erst laden lassen
+    // nach dem Abspann-Sprung erst laden lassen, dann anstoßen, dann aufgeben
+    const wait = outro && d - t > END_S ? (stuck.step ? OUTRO_STALL_MS : OUTRO_NUDGE_MS) : d - t > END_S ? 2 * STALL_MS : STALL_MS;
     if (now - stuck.since < wait || now - stuck.when < STALL_MS) return;
     stuck.when = now; stuck.step++;
-    note(`Hänger bei ${mmss(t)}/${mmss(d)} (Zustand ${video.readyState}${outro ? ", nach Abspann-Sprung" : ""})`);
-    if (on && outro) { stuck.step = 2; return finished(video); } // nach Abspann-Sprung: gleich zur nächsten Folge
+    const b2 = video.buffered, buf = b2.length ? mmss(b2.end(b2.length - 1)) : "–";
+    note(`Hänger bei ${mmss(t)}/${mmss(d)} (Zustand ${video.readyState}, ${video.seeking ? "springt noch, " : ""}geladen bis ${buf}${outro ? ", nach Abspann-Sprung" : ""})`);
+    if (on && outro) {
+      // Rest nach dem Abspann (Teaser) möglichst zeigen: erst minimal weiterspringen und abspielen, das löst den Player
+      // oft; steht er danach wieder, zur nächsten Folge
+      if (stuck.step === 1 && d - t > END_S) { try { video.currentTime = t + 0.05; video.play().catch(() => {}); } catch (e) { /* lässt nicht spulen */ } return; }
+      stuck.step = 2; return finished(video);
+    }
     if (stuck.step === 1) { try { video.currentTime = d; } catch (e) { /* Player lässt nicht spulen */ } }
     else if (!video.ended) video.dispatchEvent(new Event("ended")); // kommt auch bei finished() an
   }
