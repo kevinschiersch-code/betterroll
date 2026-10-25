@@ -393,11 +393,18 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       url = String(url); window.__calls.push(url);
       if (url === "/" || url === "/de/") return new Response('<script>x={anonClientId:"anon-id",anonClientSecret:""}</script>');
       if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
-      if (url.startsWith("/content/v2/discover/browse")) return J({ data: url.includes("seasonal_tag=") && !window.__browsed++ ? [{ id: "GA", title: "Anime A", slug_title: "anime-a", last_public: iso(now - H) }] : [] });
+      if (url.startsWith("/content/v2/discover/browse")) return J({ data: url.includes("seasonal_tag=") && !window.__browsed++ ? [{ id: "GA", title: "Anime A", slug_title: "anime-a", last_public: iso(now - H) },
+        { id: "GB", title: "Anime B", slug_title: "anime-b", last_public: iso(now - 4 * H) }] : [] });
       if (url.startsWith("/content/v2/cms/series/GA/seasons")) return J({ data: [{ id: "SJ", title: "Anime A", season_number: 1, season_sequence_number: 1,
         versions: [{ audio_locale: "ja-JP", guid: "SJ" }, { audio_locale: "de-DE", guid: "SD" }] }] });
       if (url.startsWith("/content/v2/cms/seasons/SJ/episodes")) return J({ data: [ep("EJ3", 3, now - 6.5 * D, "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A")] });
       if (url.startsWith("/content/v2/cms/seasons/SD/episodes")) return J({ data: [ep("ED3", 3, now - 3 * H, "Anime A")] });
+      // Anime B: Staffel 2 nur angekündigt (Platzhalter-Datum), es läuft noch Staffel 1
+      if (url.startsWith("/content/v2/cms/series/GB/seasons")) return J({ data: [
+        { id: "SB2", title: "Anime B Staffel 2", season_number: 2, season_sequence_number: 2, versions: [{ audio_locale: "ja-JP", guid: "SB2" }] },
+        { id: "SB1", title: "Anime B", season_number: 1, season_sequence_number: 1, versions: [{ audio_locale: "ja-JP", guid: "SB1" }] }] });
+      if (url.startsWith("/content/v2/cms/seasons/SB2/episodes")) return J({ data: [ep("EB2X", 1, Date.parse("9998-11-30T00:00:00Z"), "Anime B Staffel 2")] });
+      if (url.startsWith("/content/v2/cms/seasons/SB1/episodes")) return J({ data: [ep("EB7", 7, now - 4 * H, "Anime B")] });
       if (url.startsWith("/content/v2/cms/objects/")) return J({ data: [] });
       return new Response("", { status: 404 });
     };
@@ -420,10 +427,11 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   }));
   const week0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); })();
   const inWeek = (t) => t >= week0 && t < week0 + 7 * D;
-  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H].filter(inWeek).length;
+  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H].filter(inWeek).length;
   ok("Eigener Kalender: alte Adresse, 7 Tage, kein robots-Text", st.path === "/de/simulcastcalendar" && st.days === 7 && st.pre === 0, JSON.stringify({ path: st.path, days: st.days, pre: st.pre, msg: st.msg }));
   ok("Eigener Kalender: Folgen aus dem Katalog, Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
     && (!inWeek(now - 3 * H) || st.cards.some((c) => c.t === "Anime A (German Dub)")) && st.cards.filter((c) => !c.soon).every((c) => /\/de\/watch\/E/.test(c.link)), JSON.stringify(st.cards));
+  ok("Eigener Kalender: laufende Staffel trotz angekündigter neuer Staffel", !inWeek(now - 4 * H) || st.cards.some((c) => /Anime B/.test(c.t) && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
   await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
