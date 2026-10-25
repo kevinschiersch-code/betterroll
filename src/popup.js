@@ -89,6 +89,7 @@ chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (s) => {
   $("tidy").checked = s.cleanTitles && s.seasonTag;
   $("autoClose").checked = s.autoClose;
   $("speedCtl").checked = s.speedCtl;
+  $("jumpBtns").checked = s.jumpBtns;
   $("autoSkip").checked = s.autoSkip;
   $("featureRank").checked = s.featureRank;
   radio("dateFormat", s.dateFormat).checked = true;
@@ -157,6 +158,7 @@ if ($("crApi")) onSwitch("crApi", "crApi");
 onSwitch("featureComments", "featureComments");
 onSwitch("autoClose", "autoClose");
 onSwitch("speedCtl", "speedCtl");
+onSwitch("jumpBtns", "jumpBtns");
 onSwitch("autoSkip", "autoSkip");
 onSwitch("featureRank", "featureRank");
 $("tidy").addEventListener("change", (e) => save({ cleanTitles: e.target.checked, seasonTag: e.target.checked }));

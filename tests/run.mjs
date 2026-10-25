@@ -77,6 +77,15 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   <section><h4>Nächste Folge</h4><a href="/de/watch/BBB222/folge-2">Folge 2</a></section>
   <section><h4>Vorherige Folge</h4><a href="/de/watch/ZZZ000/folge-0">Folge 0</a></section>
   <script src="/src/skip.js"></script></body></html>`,
+  // nachgebaute Player-Leiste (katamari, Stand 25.10.); Klick auf die Leiste = Pause wie im echten Player
+  "/de/watch/DDD444/folge-4": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <div id="player-container" class="player-container"><video id="v" src="/src/backgrounds/haus_1.webm" muted width="320" height="180"></video>
+  <div data-testid="player-controls-root" onclick="__root++"><div data-testid="bottom-left-controls-stack" class="kat:flex">
+  <button aria-label="10 Sekunden zurückspulen" type="button" class="kat:h-44 kat:w-44" data-testid="jump-backward-button" onclick="event.stopPropagation()"><svg width="44" height="44" viewBox="0 0 24 24" data-testid="jump-backward-icon"><path d="M12 0L6 4l6 4z"/></svg></button>
+  <button aria-label="Pause" type="button" data-testid="play-pause-button"><svg viewBox="0 0 24 24"><path d="M4 2H10V22H4z"/></svg></button>
+  <button aria-label="10 Sekunden vorspulen" type="button" class="kat:h-44 kat:w-44" data-testid="jump-forward-button" onclick="event.stopPropagation()"><svg width="44" height="44" viewBox="0 0 24 24" data-testid="jump-forward-icon"><path d="M12 0l6 4-6 4z"/></svg></button>
+  <span data-testid="timestamp">0:00</span></div></div></div>
+  <script>window.__root = 0;</script><script src="/src/jump.js"></script></body></html>`,
   "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>",
   "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
@@ -629,6 +638,39 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Nach Update: verbunden bleibt Folgenwechsel wie gehabt", connected[0] === "/de/watch/BBB222/folge-2" && connected[1] === 1, JSON.stringify(connected));
   ok("Nach Update: alte Skripte laden beim Folgenwechsel neu", orphan[0] === "/de/watch/BBB222/folge-2" && orphan[1] === 0 && orphan[2] === "Folge 2", JSON.stringify(orphan));
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
+// ===== 3e. Spul-Knöpfe in der Player-Leiste: −1:30 −30 [−10] ▶ [+10] +1:30, Klick spult, nicht bis über das Ende =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/de/watch/DDD444/folge-4");
+  await page.evaluate(() => { const v = document.getElementById("v"); let pos = 600;
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } }); });
+  await page.waitForTimeout(500);
+  const order = await page.evaluate(() => [...document.querySelector("[data-testid=bottom-left-controls-stack]").children]
+    .map((b) => b.getAttribute("data-crlf-jump") || b.getAttribute("data-testid")).join(" "));
+  ok("Spul-Knöpfe: Reihenfolge in der Leiste", order === "-90 -30 jump-backward-button play-pause-button jump-forward-button 90 timestamp", order);
+  const look = await page.evaluate(() => { const b = document.querySelector('[data-crlf-jump="-90"]');
+    return [b.className, b.querySelector("text")?.textContent, b.getAttribute("aria-label"),
+      document.querySelector("[data-testid=jump-forward-button] text")?.textContent]; });
+  ok("Spul-Knöpfe: Aussehen vom Player-Knopf, Zahl im Pfeil", look[0] === "kat:h-44 kat:w-44" && look[1] === "1:30" && look[2] === "1:30 zurückspulen" && look[3] === "10", JSON.stringify(look));
+  const t = [];
+  const click = async (s) => { await page.click(`[data-crlf-jump="${s}"]`); t.push(await page.evaluate("document.getElementById('v').currentTime")); };
+  await click(-90); await click(-30); await click(90); await click(90);
+  await page.evaluate(() => { document.getElementById("v").currentTime = 1400; });
+  await click(90);
+  await page.evaluate(() => { document.getElementById("v").currentTime = 20; });
+  await click(-30);
+  ok("Spul-Knöpfe: spulen um −90/−30/+90 s, höchstens bis 1 s vor Schluss bzw. 0", JSON.stringify(t) === "[510,480,570,660,1419,0]", JSON.stringify(t));
+  ok("Spul-Knöpfe: Klick löst keine Pause im Player aus", (await page.evaluate("__root")) === 0);
+  await page.evaluate(() => chrome.storage.sync.set({ jumpBtns: false }));
+  await page.waitForTimeout(300);
+  const gone = await page.evaluate(() => document.querySelectorAll("[data-crlf-jump]").length);
+  ok("Spul-Knöpfe: ausschaltbar (Einstellung)", gone === 0, `${gone} übrig`);
+  ok("Spul-Knöpfe ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
 await browser.close();

@@ -30,7 +30,7 @@ const CR_LANGUAGES = [
 ];
 
 // Standardwerte aller Einstellungen (chrome.storage.sync); Bedeutung siehe popup.js / content.js
-const CR_DEFAULT_SETTINGS = { active: true, enabled: true, language: "de", theme: "dark", pageTheme: "dark", featureFav: true, featureDim: true, featureComments: true, dateFormat: "de", hideTop: true, merge: true, prefer: "lang", cleanTitles: true, seasonTag: true, pageBg: "aurora", moreOpen: false, thumbs: "fav", posterSize: 100, uiLang: "de", autoClose: true, speedCtl: true, autoSkip: true, onlyFav: false, featureRank: true, favTop: true, diag: false, hotkeys: true, crApi: true };
+const CR_DEFAULT_SETTINGS = { active: true, enabled: true, language: "de", theme: "dark", pageTheme: "dark", featureFav: true, featureDim: true, featureComments: true, dateFormat: "de", hideTop: true, merge: true, prefer: "lang", cleanTitles: true, seasonTag: true, pageBg: "aurora", moreOpen: false, thumbs: "fav", posterSize: 100, uiLang: "de", autoClose: true, speedCtl: true, jumpBtns: true, autoSkip: true, onlyFav: false, featureRank: true, favTop: true, diag: false, hotkeys: true, crApi: true };
 
 // Titel ohne Sprachzusatz, kleingeschrieben: Schlüssel für Markierungen pro Anime
 function crBaseTitle(title) {
