@@ -63,6 +63,18 @@
     }, true);
   }
 
+  // ===== Nach einem Update =====
+  // Nach Update oder Neuladen des Add-ons laufen in offenen Tabs die alten Skripte ohne Verbindung weiter: Chrome tauscht
+  // sie nicht aus, und Crunchyroll wechselt Folgen ohne Neuladen, also bliebe die alte Version bis zum Schließen des
+  // Tabs aktiv. Darum beim nächsten Seitenwechsel (z. B. zur nächsten Folge) einmal richtig laden statt nur umschalten.
+  if (window.top === window && window.navigation) navigation.addEventListener("navigate", (e) => {
+    if ((chrome.runtime && chrome.runtime.id) || e.hashChange || e.downloadRequest || !e.cancelable) return;
+    const url = e.destination && e.destination.sameDocument && e.destination.url; // nur Umschalten ohne Laden
+    if (!url || new URL(url).origin !== location.origin) return;
+    e.preventDefault();
+    location.assign(url);
+  });
+
   // ===== Nächste Folge =====
   // Je Folge einmal: erst den Knopf „Nächste Folge“ dieses Rahmens drücken; gibt es keinen, übernimmt die Seite
   // (Knopf dort, sonst Link „Nächste Folge“ unter dem Player)

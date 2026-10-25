@@ -617,6 +617,17 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     v.dispatchEvent(new Event("ended")); });
   await page.waitForTimeout(1500);
   ok("Nächste Folge: ohne Knopf den Link geöffnet", /\/watch\/BBB222\//.test(page.url()), page.url());
+  // Add-on inzwischen neu geladen (alte Skripte ohne Verbindung): Folgenwechsel ohne Laden wird zum richtigen Laden
+  await page.goto(BASE + "/de/watch/CCC333/folge-3");
+  await page.evaluate(() => { window.__same = 1; history.pushState({}, "", "/de/watch/BBB222/folge-2"); });
+  await page.waitForTimeout(300);
+  const connected = await page.evaluate("[location.pathname, window.__same]");
+  await page.goto(BASE + "/de/watch/CCC333/folge-3");
+  await page.evaluate(() => { window.__same = 1; delete chrome.runtime.id; history.pushState({}, "", "/de/watch/BBB222/folge-2"); }).catch(() => {});
+  await page.waitForTimeout(1000);
+  const orphan = await page.evaluate("[location.pathname, window.__same || 0, document.title]");
+  ok("Nach Update: verbunden bleibt Folgenwechsel wie gehabt", connected[0] === "/de/watch/BBB222/folge-2" && connected[1] === 1, JSON.stringify(connected));
+  ok("Nach Update: alte Skripte laden beim Folgenwechsel neu", orphan[0] === "/de/watch/BBB222/folge-2" && orphan[1] === 0 && orphan[2] === "Folge 2", JSON.stringify(orphan));
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }

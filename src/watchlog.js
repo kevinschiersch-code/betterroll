@@ -23,12 +23,13 @@
   const save = async () => {
     timer = 0;
     const id = epId();
-    if (!id || pending === null) return;
+    if (!id || pending === null || !(chrome.runtime && chrome.runtime.id)) return; // Add-on inzwischen neu geladen
     const p = Math.round(pending * 1000) / 1000;
     pending = null;
     lastSave = Date.now();
     const key = id.toUpperCase();
-    const { epProg = {} } = await chrome.storage.local.get("epProg");
+    let epProg;
+    try { ({ epProg = {} } = await chrome.storage.local.get("epProg")); } catch (e) { return; }
     const old = epProg[key];
     if (old && Math.abs(old.p - p) < 0.005) return;
     epProg[key] = { p: old && old.p >= 0.9 ? Math.max(old.p, p) : p, t: Date.now() }; // gesehen bleibt gesehen
