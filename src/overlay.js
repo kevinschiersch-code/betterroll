@@ -12,7 +12,8 @@
   let on = true, userAt = 0, timer = 0;
   const tried = new WeakSet(); // Ebenen, die schon einmal geschlossen werden sollten
   // Auf Folgenseiten erst nach 12 s schließen: Am Folgenende zeigt die Seite dort evtl. den Übergang zur nächsten Folge
-  // (Autoplay); geht es weiter, ist der Dialog bis dahin von selbst weg. Nach der letzten Folge geht er danach zu.
+  // (Autoplay); geht es weiter, ist der Dialog bis dahin von selbst weg. Ausnahme: das Empfehlungsfenster nach der
+  // letzten Folge (dialog.erc-end-slate-recommendations-carousel, Knopf data-t="close-btn") geht sofort zu.
   const WATCH_WAIT = 12e3, firstSeen = new WeakMap();
   const CLOSE_RE = /^(close|schlie(ß|ss)en|dismiss|×|✕|✖|x)$|close|schlie(ß|ss)en|dismiss/i;
   chrome.storage.sync.get({ active: true, autoClose: true }, (s) => { on = s.active && s.autoClose; check(); });
@@ -78,7 +79,7 @@
       if (excluded(d) || d.querySelector(FIELDS)) { tried.add(d); continue; }
       const btn = closeButton(d, r);
       if (!btn) continue;
-      if (/\/watch\//.test(location.pathname)) {
+      if (/\/watch\//.test(location.pathname) && !d.matches(".erc-end-slate-recommendations-carousel")) { // Empfehlungen: sofort
         if (!firstSeen.has(d)) { firstSeen.set(d, Date.now()); setTimeout(check, WATCH_WAIT + 100); }
         if (Date.now() - firstSeen.get(d) < WATCH_WAIT) continue;
       }

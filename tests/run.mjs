@@ -563,16 +563,30 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const btn = await page.evaluate("[__next, __prev]");
   ok("Nächste Folge: vor der letzten Sekunde nichts", before === 0, `${before}x`);
   ok("Nächste Folge: Knopf in der letzten Sekunde gedrückt (einmal)", btn[0] === 1 && btn[1] === 0, JSON.stringify(btn));
-  // Abspann-Knopf gegen Ende: statt überspringen gleich „Nächste Folge“
-  await page.reload();
-  await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1330;
+  // Abspann-Knopf gegen Ende: überspringen, danach läuft der Rest (Teaser) bis zur letzten Sekunde
+  const outroPage = async (frozen) => { await page.reload(); await page.evaluate((frozen) => { const v = document.getElementById("v"), b = document.getElementById("ab"); let pos = 1330;
     Object.defineProperty(v, "duration", { get: () => 1420 });
-    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
-    document.getElementById("ab").style.display = "block";
-    return v.play(); });
-  await page.waitForTimeout(1500);
-  const outro = await page.evaluate("[__next, __ab]");
-  ok("Nächste Folge: beim Abspann-Knopf gleich weiter statt überspringen", outro[0] === 1 && outro[1] === 0, JSON.stringify(outro));
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; v.dispatchEvent(new Event("seeked")); } });
+    b.onclick = () => { __ab++; b.style.display = "none"; v.currentTime = 1380; }; // Abspann bis 23:00, danach 40 s Teaser
+    if (!frozen) setInterval(() => { if (pos >= 1380) pos += 0.25; }, 250); // Teaser läuft
+    window.__set = (x) => { pos = x; };
+    b.style.display = "block";
+    return v.play(); }, frozen); };
+  await outroPage(false);
+  await page.waitForTimeout(2500);
+  const teaser = await page.evaluate("[__ab, __next]");
+  await page.evaluate(() => __set(1419.2));
+  await page.waitForTimeout(800);
+  const atLast = await page.evaluate("__next");
+  ok("Abspann übersprungen, Teaser danach läuft weiter", teaser[0] === 1 && teaser[1] === 0, JSON.stringify(teaser));
+  ok("Nach dem Teaser in der letzten Sekunde zur nächsten Folge", atLast === 1, `${atLast}x`);
+  // nach dem Abspann-Sprung bleibt der Player stehen: nach 4 s zur nächsten Folge
+  await outroPage(true);
+  await page.waitForTimeout(3000);
+  const stillEarly = await page.evaluate("__next");
+  await page.waitForTimeout(3000);
+  const stalled = await page.evaluate("[__ab, __next]");
+  ok("Hänger nach Abspann-Sprung: erst warten, dann nächste Folge", stillEarly === 0 && stalled[0] === 1 && stalled[1] === 1, `${stillEarly} / ${JSON.stringify(stalled)}`);
   await page.goto(BASE + "/de/watch/AAA111/folge-1");
   await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
     v.dispatchEvent(new Event("ended")); });
