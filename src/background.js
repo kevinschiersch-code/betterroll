@@ -171,7 +171,10 @@ async function loadBanner({ url, dataUrl, name, w, h }) {
   if (url) chrome.storage.local.remove("crBannerPending"); // erledigt, egal wie es ausgeht
   try {
     let blob;
-    if (dataUrl) blob = await (await fetch(dataUrl)).blob();
+    if (dataUrl) {
+      if (!/^data:image\//i.test(dataUrl)) return { error: "Kein Bild" };
+      blob = await (await fetch(dataUrl)).blob();
+    }
     else {
       if (!/^https:\/\//i.test(url || "")) return { error: "Keine gültige Adresse" };
       const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" });
@@ -204,7 +207,9 @@ async function loadBanner({ url, dataUrl, name, w, h }) {
 chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {
   await new Promise((ok) => setTimeout(ok, 1500)); // ist das Popup noch offen, erledigt es das selbst
   const { crBannerPending: p } = await chrome.storage.local.get("crBannerPending");
-  if (p && p.url && origins.some((o) => o.replace(/\/\*$/, "") === new URL(p.url).origin)) makeBanner(p);
+  let origin = "";
+  try { origin = p && p.url ? new URL(p.url).origin : ""; } catch (e) {}
+  if (origin && origins.some((o) => o.replace(/\/\*$/, "") === origin)) makeBanner(p);
 });
 
 // ===== 3. Erstinstallation =====
@@ -214,8 +219,10 @@ chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {
 // Danach öffnet sich einmal die Willkommensseite (welcome.html) mit einer kurzen Übersicht der Funktionen.
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   dropOrigins(); // seit 1.86.23: Bildfreigaben werden nach dem Laden abgegeben, alte Reste hier entfernen
-  // „Fehler melden“ gibt es seit 1.82 nicht mehr: dafür gesammelte Daten löschen
-  chrome.storage.local.remove(["crReportDraft", "crReportTimes", "crReportHashes", "crInstallId", "crClosedOverlays", "crOverlaySeen", "crSkipLog", "crPlayerDiag"]).catch(() => {});
+  // Speicher früherer Versionen löschen: „Fehler melden“ (bis 1.82), alte Poster (Crunchyroll-Bilder), erste Fassung
+  // des eigenen Kalenders
+  chrome.storage.local.remove(["crReportDraft", "crReportTimes", "crReportHashes", "crInstallId", "crClosedOverlays", "crOverlaySeen", "crSkipLog", "crPlayerDiag",
+    "crPosters", "crPosters2", "crPosters3", "calCache", "calCache2", "calWeeks"]).catch(() => {});
   if (reason !== "install") return;
   try {
     const res = await fetch(chrome.runtime.getURL("lang.json"), { cache: "no-store" });

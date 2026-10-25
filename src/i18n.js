@@ -236,15 +236,10 @@ function T(de, ...args) {
 // Zahlen und Datumsangaben passend zur Sprache
 function crlfLocale() { return crlfLang === "en" ? "en-US" : "de-DE"; }
 
-// gespeicherte Sprache laden; crlfLangReady ist erfüllt, sobald crlfLang feststeht (das Popup wartet darauf)
-var crlfLangReady = new Promise((ok) => {
-  try {
-    chrome.storage.sync.get({ uiLang: "de" }, (s) => {
-      crlfLang = s && s.uiLang === "en" ? "en" : "de";
-      ok(crlfLang);
-    });
-  } catch (e) { ok(crlfLang); }
-});
+// gespeicherte Sprache laden (Design-Skripte laufen schon vor content.js, das die Einstellungen sonst liest)
+try {
+  chrome.storage.sync.get({ uiLang: "de" }, (s) => { crlfLang = s && s.uiLang === "en" ? "en" : "de"; });
+} catch (e) {}
 
 // Staffel-Abzeichen „ST 1 | T 2“ (englisch „S 1 | P 2“) ohne innerHTML aufbauen
 function crlfSeasonBadge(el, n, part) {

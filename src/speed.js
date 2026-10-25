@@ -301,11 +301,6 @@
     choose(speed + (e.key === "+" ? STEP : -STEP));
     wake();
   }, true);
-  // Frage des Hintergrunds vor einem automatischen Update: läuft hier gerade ein Video? Nur „ja“ wird beantwortet
-  // (mehrere Rahmen einer Seite: die erste Antwort zählt, ein „nein“ aus der äußeren Seite darf das „ja“ nicht verdecken)
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg && msg.type === "crlf-playing" && vids().some((v) => !v.paused && !v.ended)) sendResponse(true);
-  });
   addEventListener("mousemove", wake, { passive: true, capture: true });
   addEventListener("fullscreenchange", () => setTimeout(scan, 100));
   // Menü sofort umbauen, sobald der Player es öffnet (vor dem Zeichnen, kein Aufblitzen der alten Einträge);

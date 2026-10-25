@@ -492,7 +492,7 @@ $("bkFile").addEventListener("change", async (e) => {
   // Titel-Zuordnungen: nur Einträge mit Zahl als ID und https-Adresse (die Adresse wird im 💬-Fenster zum Link)
   const okEntry = (v) => isMap(v) && Number.isInteger(v.id) && v.id > 0 && (v.url == null || (typeof v.url === "string" && v.url.startsWith("https://")));
   for (const k of ["alMap", "malMap"]) if (isMap(src[k])) local[k] = Object.fromEntries(Object.entries(src[k]).filter(([, v]) => okEntry(v)));
-  if (isMap(src.crBanner) && typeof src.crBanner.src === "string" && src.crBanner.src.startsWith("data:image/")) local.crBanner = src.crBanner;
+  if (isMap(src.crBanner) && typeof src.crBanner.src === "string" && /^data:image\/[a-z+.-]+;base64,[A-Za-z0-9+/=]+$/i.test(src.crBanner.src)) local.crBanner = src.crBanner;
   if (typeof src.playerSpeed === "number") local.playerSpeed = src.playerSpeed;
   if (typeof src.crRankSort === "string") local.crRankSort = src.crRankSort;
   await chrome.storage.sync.set(sync);

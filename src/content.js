@@ -273,12 +273,6 @@ function cardImage(release) {
   }
   return best;
 }
-// Hülle einer Karte: ihr Listeneintrag, wenn er nur diese Karte enthält, sonst der Eintrags-Container
-function cardBox(release) {
-  const li = release.closest("li");
-  if (li && li.querySelectorAll("article.release, .js-release").length <= 1) return li;
-  return releaseContainer(release);
-}
 // Fortschrittsbalken der Seite in dieser Karte: ein natives <progress> (darin nur Ersatz-Divs „Fortschritt: 100 %“).
 // Ist er sichtbar, wird er per CSS orange gefärbt und ist der einzige Balken – wir zeichnen dann keinen eigenen.
 // Auf Karten mit Poster (★) steckt er unsichtbar im ausgeblendeten Folgenbild-Teil: dann zählt nur sein Wert.
@@ -501,7 +495,6 @@ addEventListener("resize", () => scheduleFilter(), { passive: true });
 function prefetchPosters(releases) { if (settings.thumbs !== "none") for (const r of releases) posterFor(r); }
 chrome.storage.local.get({ crPosters4: {} }, (r) => {
   posterStore = r.crPosters4 || {};
-  chrome.storage.local.remove(["crPosters", "crPosters2", "crPosters3"]); // alte Speicher (Crunchyroll-Bilder) verwerfen
   scheduleFilter();
 });
 
@@ -1031,7 +1024,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   else if (area === "sync") {
     const keys = Object.keys(changes).filter((k) => k in CR_DEFAULT_SETTINGS); // mk0… (Favoriten-Abgleich) ignorieren
     if (!keys.length) return;
-    for (const key of keys) settings[key] = changes[key].newValue;
+    for (const key of keys) settings[key] = changes[key].newValue ?? CR_DEFAULT_SETTINGS[key]; // gelöscht: Standardwert
   } else return;
   if (settingsReady) applyFilter();
 });
