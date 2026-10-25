@@ -22,7 +22,7 @@
   const VERB = /skip|überspring/i;
   const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
   const END_S = 3, STALL_MS = 1500, OUTRO_STALL_MS = 4000;
-  const NEXT_RE = /^(nächste folge|next episode|up next|als nächstes|siguiente episodio|épisode suivante|prossimo episodio|próximo episódio)$/i;
+  const NEXT_RE = /^(nächste folge|nächste episode|next episode|up next|als nächstes|siguiente episodio|épisode suivante|prossimo episodio|próximo episódio)$/i;
   let on = true, active = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
   let state = new WeakMap();
@@ -103,6 +103,8 @@
   // einer anderen Folge
   function nextLink() {
     const cur = (location.pathname.match(/\/watch\/([A-Z0-9]+)/i) || [])[1] || "";
+    const direct = document.querySelector('[data-t="next-episode"] a[href*="/watch/"]'); // Kasten „Nächste Episode“ unter dem Player
+    if (direct) return direct.href;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => (n.nodeValue.length < 40 && NEXT_RE.test(n.nodeValue.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
     });
