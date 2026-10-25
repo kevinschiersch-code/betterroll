@@ -640,7 +640,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
-// ===== 3e. Spul-Knöpfe in der Player-Leiste: −1:30 −30 [−10] ▶ [+10] +1:30, Klick spult, nicht bis über das Ende =====
+// ===== 3e. Spul-Knöpfe in der Player-Leiste: [−10] ▶ [+10] −1:30 −30 +1:30, Klick spult, nicht bis über das Ende =====
 {
   const page = await browser.newPage();
   const errors = [];
@@ -652,7 +652,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.waitForTimeout(500);
   const order = await page.evaluate(() => [...document.querySelector("[data-testid=bottom-left-controls-stack]").children]
     .map((b) => b.getAttribute("data-crlf-jump") || b.getAttribute("data-testid")).join(" "));
-  ok("Spul-Knöpfe: Reihenfolge in der Leiste", order === "-90 -30 jump-backward-button play-pause-button jump-forward-button 90 timestamp", order);
+  ok("Spul-Knöpfe: Reihenfolge in der Leiste", order === "jump-backward-button play-pause-button jump-forward-button -90 -30 90 timestamp", order);
   const look = await page.evaluate(() => { const b = document.querySelector('[data-crlf-jump="-90"]');
     return [b.className, b.querySelector("text")?.textContent, b.getAttribute("aria-label"),
       document.querySelector("[data-testid=jump-forward-button] text")?.textContent]; });

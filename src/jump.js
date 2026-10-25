@@ -1,5 +1,5 @@
-// jump.js – Spul-Knöpfe in der Leiste des Crunchyroll-Players (Nutzerwunsch): −1:30 und −30 s links vom Knopf
-// „10 Sekunden zurückspulen“ des Players, +1:30 rechts von „10 Sekunden vorspulen“. Die beiden 10-s-Knöpfe gibt es
+// jump.js – Spul-Knöpfe in der Leiste des Crunchyroll-Players (Nutzerwunsch): −1:30, −30 s und +1:30 direkt hinter
+// „10 Sekunden vorspulen“ des Players (alle zusammen links in der Leiste). Die beiden 10-s-Knöpfe gibt es
 // schon im Player; sie bleiben, wie sie sind, und bekommen nur eine „10“ ins Symbol, damit alle fünf gleich aussehen.
 // Unsere Knöpfe übernehmen Klasse und Pfeil-Symbol der Player-Knöpfe (Größe, Farbe, Ausblenden wie die Leiste) und
 // tragen die Sekunden als Zahl im Pfeil. Gespult wird direkt am Video (currentTime), mehrere Klicks hintereinander
@@ -8,7 +8,7 @@
 // jump-backward-button, play-pause-button, jump-forward-button. Ohne diese Knöpfe (anderer Player) passiert nichts.
 // Keine Schnittstelle, kein Netzverkehr. Schalter: Einstellung jumpBtns (ab Werk an).
 (() => {
-  const BACK = [-90, -30], FWD = [90]; // Reihenfolge in der Leiste: −1:30 −30 [−10] ▶ [+10] +1:30
+  const STEPS = [-90, -30, 90]; // Reihenfolge in der Leiste: [−10] ▶ [+10] −1:30 −30 +1:30
   let on = true, en = false;
   const num = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : String(s));
   const SVG = "http://www.w3.org/2000/svg";
@@ -85,19 +85,11 @@
       if (!back || !fwd) continue;
       mark(back.querySelector("svg"), 10);
       mark(fwd.querySelector("svg"), 10);
-      // links vom −10: −1:30, −30 (in dieser Reihenfolge direkt davor)
-      let at = back;
-      for (const s of [...BACK].reverse()) {
+      // direkt hinter dem +10: −1:30, −30, +1:30 (Symbol je nach Richtung vom −10- bzw. +10-Knopf)
+      let at = fwd;
+      for (const s of STEPS) {
         let b = stack.querySelector(`[data-crlf-jump="${s}"]`);
-        if (!b) b = make(back, s);
-        if (b.nextElementSibling !== at) at.before(b);
-        at = b;
-      }
-      // rechts vom +10: +1:30
-      at = fwd;
-      for (const s of FWD) {
-        let b = stack.querySelector(`[data-crlf-jump="${s}"]`);
-        if (!b) b = make(fwd, s);
+        if (!b) b = make(s < 0 ? back : fwd, s);
         if (b.previousElementSibling !== at) at.after(b);
         at = b;
       }
