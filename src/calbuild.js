@@ -257,7 +257,7 @@
         if (known.has(n)) continue;
         if (d <= now || d < start) continue;
         if (d >= end) break;
-        items.push({ id: "", n, d, sid: s.sid, slug2: slug, title, img: last.img || poster, soon: true });
+        items.push({ id: "", n, d, sid: s.sid, slug2: slug, title, img: last.img || poster, soon: true, last });
       }
     }
     return items;
@@ -282,7 +282,11 @@
         const target = it.id ? path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`) : seriesUrl;
         const thumb = it.img ? el("img", { src: it.img, width: "160", height: "90", alt: "", loading: "lazy" }) : null;
         ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null,
-          "data-crlf-ep": it.id ? it.id.toUpperCase() : null },
+          "data-crlf-ep": it.id ? it.id.toUpperCase() : null,
+          // geschätzte Folge: die Vorschau zeigt stattdessen die zuletzt erschienene (Bild, Fortschritt, Abspielen)
+          "data-crlf-last-ep": it.last && it.last.id ? it.last.id.toUpperCase() : null, "data-crlf-last-n": it.last ? String(it.last.n) : null,
+          "data-crlf-last-thumb": (it.last && it.last.img) || null,
+          "data-crlf-last-href": it.last && it.last.id ? path(`watch/${it.last.id}${it.last.slug ? "/" + it.last.slug : ""}`) : null },
           el("time", { class: "available-time", datetime: when.toISOString() }, fmtTime.format(when)),
           el("div", { class: "season-name" }, el("a", { href: path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`) }, el("cite", { itemprop: "name" }, it.title))),
           el("div", { class: "episode" }, el("a", { href: target, class: "crlf-eplink" }, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
@@ -309,6 +313,11 @@
       if (v === null) { if (pr) pr.remove(); continue; }
       if (!pr) { pr = el("progress", { max: "1", class: "crlf-progsrc" }); card.append(pr); }
       if (pr.getAttribute("value") !== v) pr.setAttribute("value", v);
+    }
+    // geschätzte Folgen: Fortschritt der zuletzt erschienenen nur für die Vorschau merken (Karte selbst bleibt ungegraut)
+    for (const card of document.querySelectorAll(".crlf-calweek article.release[data-crlf-last-ep]")) {
+      const e = epProg[card.dataset.crlfLastEp];
+      if (e && e.p > 0) card.dataset.crlfLastP = String(Math.max(0.1, e.p)); else delete card.dataset.crlfLastP;
     }
   }
   chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && ch.epProg) showProgress(ch.epProg.newValue || {}); });

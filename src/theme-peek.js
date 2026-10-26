@@ -513,6 +513,17 @@ function crlfPeekEarly(card) {
       if (mem.buttons && mem.buttons.length) d.buttons = mem.buttons.map((b) => ({ el: null, label: b.label, href: "", play: b.play }));
       if (mem.epNo && mem.epNo === d.epNo) { d.thumb = d.thumb || mem.thumb || null; d.epTitle = mem.epTitle || ""; }
     }
+    // eigener Kalender, geschätzte Folge (noch nicht erschienen): zuletzt erschienene Folge zeigen, damit man sieht,
+    // ob man sie schon gesehen hat (Nutzerwunsch), samt Abspielen dieser Folge
+    const lastEp = card.closest("[data-crlf-last-ep]") || card.querySelector("[data-crlf-last-ep]");
+    if (lastEp) {
+      const ld = lastEp.dataset;
+      d.epNo = ld.crlfLastN || "";
+      d.epTitle = T("Zuletzt erschienen");
+      d.thumb = ld.crlfLastThumb || d.thumb;
+      d.progress = ld.crlfLastP ? Math.min(1, +ld.crlfLastP) : null;
+      if (ld.crlfLastHref) d.buttons = [{ el: null, label: T("Abspielen"), href: ld.crlfLastHref, play: true }, ...(d.url ? [{ el: null, label: T("Zur Serie"), href: d.url, play: false }] : [])];
+    }
     if (crlfHoverCard !== card || !card.isConnected || !crlfWithin(card, 2) || (crlfPeekEl && crlfPeekCard === card)) return;
     if (!d.desc && d.url) d.fromCard = true; // Beschreibung von der Serienseite oder der Seite nachtragen
     crlfPeekSrc = null;

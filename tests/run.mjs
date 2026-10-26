@@ -457,6 +457,32 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover") || u.includes("/cms/series") || u.includes("/cms/seasons")).length,
     cards: document.querySelectorAll("article.release").length }));
   ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
+  // nächste Woche: geschätzte Folge von Anime B (7 + 1); die Vorschau zeigt die zuletzt erschienene Folge 7 mit Fortschritt
+  if (inWeek(now - 4 * H)) {
+    const nextMon = new Date(week0 + 7 * D + 12 * H), ymd = `${nextMon.getFullYear()}-${String(nextMon.getMonth() + 1).padStart(2, "0")}-${String(nextMon.getDate()).padStart(2, "0")}`;
+    await page.evaluate(() => chrome.storage.local.set({ epProg: { EB7: { p: 0.5, t: Date.now() } } }));
+    await page.goto(BASE + `/robots.txt?simulcastcalendar&p=de/&date=${ymd}`);
+    await page.waitForSelector("article.release.crlf-soon", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    const soon = await page.evaluate(() => {
+      const a = [...document.querySelectorAll("article.release.crlf-soon")].find((x) => /Anime B/.test(x.querySelector("cite").textContent));
+      if (!a) return null;
+      a.scrollIntoView({ block: "center" });
+      document.documentElement.classList.add("crlf-themed");
+      const r = a.getBoundingClientRect();
+      return { ...a.dataset, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    ok("Eigener Kalender: geschätzte Folge kennt die zuletzt erschienene", soon && soon.crlfLastEp === "EB7" && soon.crlfLastN === "7" && soon.crlfLastP === "0.5"
+      && /\/de\/watch\/EB7/.test(soon.crlfLastHref), JSON.stringify(soon));
+    if (soon) {
+      await page.mouse.move(soon.x, soon.y);
+      await page.mouse.move(soon.x + 2, soon.y + 1);
+      await page.waitForTimeout(700);
+      const pk = await page.evaluate(() => { const p = document.querySelector(".crlf-peek"); return p && { ep: p.querySelector(".crlf-pk-eptext")?.textContent || "",
+        thumb: !!p.querySelector(".crlf-pk-thumb img"), bar: p.querySelector(".crlf-pk-bar i")?.style.getPropertyValue("--p") || "", btn: p.querySelector(".crlf-pk-btn")?.textContent || "" }; });
+      ok("Vorschau geschätzte Folge: zeigt zuletzt erschienene Folge mit Fortschritt", pk && /Folge 7/.test(pk.ep) && /Zuletzt/.test(pk.ep) && pk.thumb && pk.bar === "50%" && pk.btn === "Abspielen", JSON.stringify(pk));
+    }
+  }
   ok("Eigener Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }

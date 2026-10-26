@@ -210,6 +210,7 @@ var CRLF_EN = {
   "Bildschirmfüllende Einblendungen (z. B. nach der letzten Folge) automatisch schließen": "Automatically close full-screen overlays (e.g. after the last episode)",
   "Zur Serie": "Go to series",
   "Abspielen": "Play",
+  "Zuletzt erschienen": "Latest episode",
   "Schließen": "Close",
   "📰 News ({0})": "📰 News ({0})",
   "Quelle: ": "Source: ",
