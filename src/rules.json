@@ -9,7 +9,7 @@
       }
     },
     "condition": {
-      "regexFilter": "^https://www\\.crunchyroll\\.com/((?:[a-z]{2}(?:-[a-z]{2,3})?/)?)simulcastcalendar/?(?:\\?(.*))?$",
+      "regexFilter": "^https://www\\.crunchyroll\\.com/((?:[a-z]{2}(?:-[a-z]{2,3})?/)?)(?:simulcast|release)calendar/?(?:\\?(.*))?$",
       "resourceTypes": [
         "main_frame"
       ]
