@@ -188,7 +188,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const before = line.textContent.includes("Verfügbar");
     const tag = card.querySelector(".crlf-tag"), talk0 = line.querySelector(".crlf-btn-talk");
     const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
-    const oneRow = !!(tag && line.contains(tag) && !!(tag.compareDocumentPosition(talk0) & Node.DOCUMENT_POSITION_FOLLOWING) && Math.abs(mid(tag) - mid(talk0)) < 4);
+    // öffentliche Linie: 💬 ist dort aus (versteckt), dann nur Sprache in der Zeile
+    const oneRow = !!(tag && line.contains(tag) && (talk0.hidden || (!!(tag.compareDocumentPosition(talk0) & Node.DOCUMENT_POSITION_FOLLOWING) && Math.abs(mid(tag) - mid(talk0)) < 4)));
     const fresh = document.createElement("div");
     fresh.className = "episode";
     fresh.innerHTML = "<span>Folge 9</span> <span>Verfügbar</span>";
@@ -568,19 +569,25 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.goto(BASE + "/src/popup.html");
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById("more").open = true; });
-  const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
-  ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
-  const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
-  await dl.saveAs(file);
-  const toast = await page.evaluate(() => !document.getElementById("toast").hidden);
-  await page.evaluate(() => { sessionStorage.setItem("st_sync", "{}"); sessionStorage.setItem("st_local", "{}"); });
-  await page.setInputFiles("#bkFile", file);
-  await page.waitForTimeout(400);
-  const back = await page.evaluate(() => [JSON.parse(sessionStorage.getItem("st_sync")), JSON.parse(sessionStorage.getItem("st_local"))]);
-  ok("Popup: Sichern mit Rückmeldung", toast);
-  ok("Popup: Laden übernimmt nur sichere Titel-Zuordnungen", back[1].alMap && Object.keys(back[1].alMap).join() === "frieren", JSON.stringify(back[1].alMap));
-  ok("Popup: Laden stellt Stand wieder her", back[0].favTop === false && back[0].pageTheme === "light" && back[1].marks.frieren === "fav" && back[1].playerSpeed === 1.25);
+  // öffentliche Linie: „Letzte Fehler“ und „Sicherung“ sind dort ausgeblendet
+  const LITE = await page.evaluate(() => !!document.querySelector(".errs.backup[hidden]"));
+  if (LITE) ok("Popup (öffentlich): Fehlerliste, Sicherung und Kommentare-Schalter ausgeblendet", await page.evaluate(() => [...document.querySelectorAll(".errs")].every((e) => e.offsetParent === null)
+    && document.getElementById("featureComments").hidden));
+  else {
+    const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
+    ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
+    const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
+    await dl.saveAs(file);
+    const toast = await page.evaluate(() => !document.getElementById("toast").hidden);
+    await page.evaluate(() => { sessionStorage.setItem("st_sync", "{}"); sessionStorage.setItem("st_local", "{}"); });
+    await page.setInputFiles("#bkFile", file);
+    await page.waitForTimeout(400);
+    const back = await page.evaluate(() => [JSON.parse(sessionStorage.getItem("st_sync")), JSON.parse(sessionStorage.getItem("st_local"))]);
+    ok("Popup: Sichern mit Rückmeldung", toast);
+    ok("Popup: Laden übernimmt nur sichere Titel-Zuordnungen", back[1].alMap && Object.keys(back[1].alMap).join() === "frieren", JSON.stringify(back[1].alMap));
+    ok("Popup: Laden stellt Stand wieder her", back[0].favTop === false && back[0].pageTheme === "light" && back[1].marks.frieren === "fav" && back[1].playerSpeed === 1.25);
+  }
   await page.waitForTimeout(1500);
   ok("Popup ohne Skriptfehler", !errors.length, errors.join(" | "));
   await ctx.close();

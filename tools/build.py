@@ -103,14 +103,35 @@ def public_variant(folder: Path, firefox: bool):
     ph = folder / "popup.html"
     h = ph.read_text(encoding="utf-8")
     # Schalter „Messung“ ausblenden; popup.js liest das Feld weiter, darum bleibt ein verstecktes Kästchen
-    a = h.rindex("<label", 0, h.index('id="diag"'))
-    h = h[:a] + '<input type="checkbox" id="diag" hidden>' + h[h.index("</label>", a) + len("</label>"):]
+    # dasselbe für den Kommentare-Knopf (💬): gibt es in der öffentlichen Linie nicht (Wunsch Enigma, 04.11.2026)
+    for fid in ("diag", "featureComments"):
+        a = h.rindex("<label", 0, h.index(f'id="{fid}"'))
+        h = h[:a] + f'<input type="checkbox" id="{fid}" hidden>' + h[h.index("</label>", a) + len("</label>"):]
     h = h.replace('<input type="url" id="bannerUrl"', '<input type="url" id="bannerUrl" hidden', 1)
+    # „Letzte Fehler“ und „Sicherung“ ausblenden (popup.js greift weiter auf die Felder zu, darum nur versteckt)
+    for cls in ('<div class="errs">', '<div class="errs backup">'):
+        assert cls in h, cls
+        h = h.replace(cls, cls[:-1] + ' hidden style="display:none">', 1)
     ph.write_text(h, encoding="utf-8")
+    # Willkommensseite ohne den Abschnitt zu Kommentaren
+    wh = folder / "welcome.html"
+    w = wh.read_text(encoding="utf-8")
+    while "<article><b>💬</b>" in w:
+        w = cut(w, "<article><b>💬</b>", "</article>")
+    wh.write_text(w, encoding="utf-8")
+    # Standard: Kommentare aus, Hintergrund „Video“ mit wechselnden Motiven (pageVideo „auto“ ist schon Standard)
+    for name, old, new in (("languages.js", "featureComments: true", "featureComments: false"), ("languages.js", 'pageBg: "aurora"', 'pageBg: "video"'),
+                           ("theme-start.js", 'pageBg: "aurora"', 'pageBg: "video"'), ("theme.js", 'let crlfBg = "aurora";', 'let crlfBg = "video";')):
+        f = folder / name
+        t = f.read_text(encoding="utf-8")
+        assert old in t, (name, old)
+        f.write_text(t.replace(old, new), encoding="utf-8")
     mf = folder / "manifest.json"
     m = json.loads(mf.read_text(encoding="utf-8"))
     m["name"] = m["action"]["default_title"] = PUBLIC_NAME
     m.pop("optional_host_permissions", None)
+    # Jikan (MyAnimeList) und Anime News Network brauchte nur das Kommentar-Fenster: weniger Berechtigungen im Store
+    m["host_permissions"] = [h for h in m.get("host_permissions", []) if "jikan.moe" not in h and "animenewsnetwork.com" not in h]
     if firefox:
         m["browser_specific_settings"]["gecko"]["id"] = PUBLIC_GECKO_ID
     mf.write_text(json.dumps(m, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
