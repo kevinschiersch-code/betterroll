@@ -101,7 +101,7 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   window.fetch = async (url, opt = {}) => {
     url = String(url); window.__api.push(url.split("?")[0] + " " + ((opt.headers && opt.headers.Authorization) || ""));
     const J = (o) => new Response(JSON.stringify(o));
-    if (url === "/de/") return new Response('<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
+    if (url === "/de/") return new Response(location.search.includes("noid") ? "<html>neue Seite ohne Kennung</html>" : '<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
     if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
     const ep = url.match(new RegExp("cms.objects.([A-Z0-9]+)"));
     if (ep) return J({ data: [{ id: ep[1], episode_metadata: { season_id: "S6" } }] });
@@ -790,6 +790,14 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const log2 = await endLog();
     ok("Fahrtenschreiber läuft auf der neuen Seite weiter", ["Katalog: nächste Folge /de/watch/GGG777/folge-7", "Katalog-Adresse der nächsten Folge geöffnet", "Seite geladen: /watch/GGG777/folge-7", "andere Folge läuft: /watch/GGG777/folge-7"].every((x) => log2.includes(x)), log2.slice(-700));
   }
+  // neue Crunchyroll-Seite ohne Kennung im HTML: bekannte Kennung der Web-App (wie crauth.js)
+  const p2 = await browser.newPage();
+  p2.on("pageerror", (e) => errors.push(e.message));
+  await p2.goto(BASE + "/de/watch/FFF666/folge-6?noid");
+  const cat2 = await p2.evaluate(async () => [await crlfNextUrl("FFF666"), __api.slice()]);
+  ok("Katalog: ohne Kennung auf der Startseite mit der bekannten Kennung der Web-App", cat2[0] === BASE + "/de/watch/GGG777/folge-7"
+    && cat2[1].includes("/auth/v1/token Basic " + Buffer.from("cr_web:").toString("base64")), JSON.stringify(cat2));
+  await p2.close();
   ok("End-Wächter/Katalog ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
