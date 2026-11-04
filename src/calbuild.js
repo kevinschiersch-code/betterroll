@@ -4,7 +4,7 @@
 // die alte Adresse in der Leiste wieder her und baut die Wochenansicht im Aufbau der alten Seite nach
 // (section.day > ol.releases > li > article.release), damit alle übrigen Teile von BetterRoll unverändert darauf arbeiten.
 // Daten seit 1.87.20 wie die neue Seite von Crunchyroll: eine Abfrage je Woche (alle erschienenen Folgen), mit dem
-// anonymen Schlüssel aus crcatalog.js (keine Cookies, kein Konto). Kommende Folgen werden aus der letzten Folge + 7 Tage
+// anonymen Schlüssel aus crauth.js (keine Cookies, kein Konto). Kommende Folgen werden aus der letzten Folge + 7 Tage
 // geschätzt (dafür die drei Wochen davor, ebenfalls je eine Abfrage, gemerkt).
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
@@ -293,7 +293,7 @@
     msg.replaceChildren(L.load);
     if (!msg.isConnected) document.body.append(msg);
     try {
-      if (typeof crlfCatToken !== "function") throw new Error("crcatalog.js fehlt");
+      if (typeof crlfCatToken !== "function") throw new Error("crauth.js fehlt");
       const w = await loadWeek(force === true);
       render(w.items, w.t);
     } catch (e) {
@@ -303,7 +303,7 @@
       if (typeof crlfError === "function") crlfError("Kalender", e);
     }
   }
-  // crcatalog.js wird nach diesem Skript geladen: erst danach starten
+  // crauth.js wird nach diesem Skript geladen: erst danach starten
   setTimeout(run, 0);
   // Inhalt von robots.txt: der Browser legt dafür eigene head/body/pre hinter unseren an; die wieder entfernen.
   // (Kein window.stop(): danach zeichnete Chrome die Seite nie, requestAnimationFrame lief nicht.)

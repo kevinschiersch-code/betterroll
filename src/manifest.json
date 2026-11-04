@@ -37,6 +37,7 @@
         "theme-peek.js",
         "theme-bg.js",
         "theme-start.js",
+        "crauth.js",
         "crcatalog.js"
       ],
       "css": [
