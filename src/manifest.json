@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BetterRoll",
-  "version": "1.87.19",
+  "version": "1.87.20",
   "description": "Macht den Crunchyroll-Simulcast-Kalender übersichtlich: Sprachfilter, Favoriten, Poster, Bewertungen und Kommentare. Inoffiziell.",
   "permissions": [
     "storage",
