@@ -429,7 +429,13 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       ep("EB7", 7, now - 4 * H, "Anime B", "GB", "SB1", "ja-JP", "Season 1"),
       // Anime C: letzte Folge vor einer Woche (+2 Std.) -> diese Woche geschätzt
       ep("EC5", 5, now - 7 * D + 2 * H, "Anime C", "GC", "SC", "ja-JP", "Anime C"),
+      // Synchro-Staffel auf einmal (eine Karte „Folge 1–3“), Staffelname ohne Serie, „Staffel 2“ trotz season_number 4
+      ep("ED1", 1, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"), ep("ED2", 2, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
+      ep("ED3X", 3, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
+      ep("EF7", 7, now - 5 * H, "Anime F", "GF", "SFI", "it-IT", "Season 1 Part 3"),
+      { ...ep("EE9", 9, now - 5 * H, "Anime E", "GE", "SE", "ja-JP", "Staffel 2"), _sn: 4 },
     ];
+    for (const e of ALL) if (e._sn) e.episode_metadata.season_number = e._sn;
     const J = (o) => new Response(JSON.stringify(o));
     window.fetch = async (url) => {
       url = String(url); window.__calls.push(url);
@@ -464,11 +470,15 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   }));
   const week0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); })();
   const inWeek = (t) => t >= week0 && t < week0 + 7 * D;
-  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H].filter(inWeek).length;
+  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H, now - 5 * H, now - 5 * H, now - 5 * H].filter(inWeek).length; // Anime D (3 Folgen) = 1 Karte
   ok("Eigener Kalender: alte Adresse, 7 Tage, kein robots-Text", st.path === "/de/simulcastcalendar" && st.days === 7 && st.pre === 0, JSON.stringify({ path: st.path, days: st.days, pre: st.pre, msg: st.msg }));
   ok("Eigener Kalender: Folgen der Woche (eine Abfrage je Woche, Weiterblättern), Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
     && (!inWeek(now - 3 * H) || st.cards.some((c) => c.t === "Anime A (German Dub)")) && st.cards.filter((c) => !c.soon).every((c) => /\/de\/watch\/E/.test(c.link)), JSON.stringify(st.cards));
   ok("Eigener Kalender: Staffel ohne eigenen Namen heißt „Serie Staffel N“", !inWeek(now - 4 * H) || st.cards.some((c) => c.t === "Anime B Staffel 1" && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: mehrere Folgen zur selben Zeit = eine Karte „Folge 1–3“", !inWeek(now - 5 * H) || st.cards.filter((c) => /Anime D/.test(c.t)).length === 1
+    && st.cards.some((c) => c.t === "Anime D (German Dub)" && /Folge 1–3/.test(c.ep) && /\/watch\/ED1\//.test(c.link)), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: Staffelnamen wie bei Crunchyroll (Serie davor, N aus „Staffel N“)", !inWeek(now - 5 * H)
+    || (st.cards.some((c) => c.t === "Anime F Season 1 Part 3 (Italian Dub)") && st.cards.some((c) => c.t === "Anime E Staffel 2")), JSON.stringify(st.cards.map((c) => c.t)));
   ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen

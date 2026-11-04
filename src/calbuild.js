@@ -112,18 +112,27 @@
   };
   const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-  // Eintrag der Schnittstelle (eine Sprachfassung einer Folge) -> Karte. Titel im alten Format („X Staffel N“ nur, wenn
-  // die Staffel keinen eigenen Namen hat; Synchro mit Zusatz „(German Dub)“), weil ★/▼ daran hängen.
+  // Eintrag der Schnittstelle (eine Sprachfassung einer Folge) -> Karte. Titel im alten Format, weil ★/▼ daran hängen:
+  // eigener Staffelname, bei bloßem „Staffel N“ (oder ohne Namen) „Serie Staffel N“ mit dem N aus dem Staffelnamen (wie
+  // Crunchyroll es zeigt; season_number zählt teils Filme mit und weicht je Sprachfassung ab). Hat der Staffelname kein
+  // Wort mit dem Serientitel gemeinsam („Season 1 Part 3“, „2026 (1187-Current)“, „…-Arc“), steht die Serie davor.
+  // Synchro mit Zusatz „(German Dub)“, wenn der Name keinen Sprachzusatz hat.
+  const STOPW = new Set(["the", "and", "der", "die", "das", "und", "von", "season", "staffel", "part", "teil", "dub"]);
+  const words = (s) => new Set((s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).filter((w) => !STOPW.has(w)));
   function toItem(e) {
     const m = e && e.episode_metadata;
     if (!m || !e.id || !m.series_id) return null;
     const d = Date.parse(m.premium_available_date || m.availability_starts || "");
     if (isNaN(d)) return null;
     const audio = m.audio_locale || "ja-JP";
-    const num = +m.season_display_number || m.season_number || m.season_sequence_number || 1;
-    const st = m.season_title || "";
-    const own = st && !/^\s*(Staffel|Season|Saison|Temporada|Stagione)\s*\d+\s*$/i.test(st) ? st : "";
-    let title = own || `${m.series_title || ""} ${de ? "Staffel" : "Season"} ${num}`;
+    const series = String(m.series_title || "").replace(/\s+/g, " ").trim(), st = String(m.season_title || "").replace(/\s+/g, " ").trim();
+    const gen = st.match(/^(?:Staffel|Season|Saison|Temporada|Stagione)\s*(\d+)$/i);
+    const num = (gen && +gen[1]) || +m.season_display_number || m.season_number || m.season_sequence_number || 1;
+    let title;
+    if (st && !gen) {
+      const sw = words(series);
+      title = !series || [...words(st)].some((w) => sw.has(w)) ? st : `${series} ${st}`;
+    } else title = `${series} ${de ? "Staffel" : "Season"} ${num}`.trim();
     const tagged = typeof crDetectLanguage === "function" ? crDetectLanguage(title) !== null : /\)\s*$/.test(title);
     if (audio !== "ja-JP" && DUB[audio] && !tagged) title += ` (${DUB[audio]} Dub)`;
     return { id: e.id, n: m.episode_number != null ? m.episode_number : m.episode, slug: e.slug_title || "", d, img: imgOf(e.images, "thumbnail", 320),
@@ -179,7 +188,19 @@
   // höchstens 3 Wochen weit, nur wenn die letzte Folge höchstens 3 Wochen her ist)
   async function loadWeek(force) {
     const [main, ...base] = await getWeeks([start, addDays(start, -7), addDays(start, -14), addDays(start, -21)], force);
-    const now = Date.now(), items = main.items.slice();
+    const now = Date.now();
+    // mehrere Folgen einer Sprachfassung zur selben Zeit (z. B. Synchro-Staffel auf einmal): eine Karte „Folge 1–11“,
+    // sie führt zur ersten Folge
+    const batch = new Map();
+    for (const it of main.items) {
+      const k = `${it.sea}|${it.d}`;
+      batch.set(k, [...(batch.get(k) || []), it]);
+    }
+    const items = [...batch.values()].map((g) => {
+      if (g.length < 2) return g[0];
+      g.sort((a, b) => (isFinite(+a.n) && isFinite(+b.n) ? +a.n - +b.n : String(a.n).localeCompare(String(b.n))));
+      return { ...g[0], n2: g[g.length - 1].n };
+    });
     const bySea = new Map();
     for (const it of [...base.flatMap((w) => w.items), ...main.items]) {
       if (it.d > now) continue;
@@ -214,7 +235,7 @@
       const ol = el("ol", { class: "releases" });
       for (const it of items.filter((x) => x.d >= day && x.d < next).sort((a, b) => a.d - b.d || a.title.localeCompare(b.title))) {
         const when = new Date(it.d);
-        const epText = `${L.ep} ${it.n}`;
+        const epText = it.n2 != null ? `${L.ep} ${it.n}–${it.n2}` : `${L.ep} ${it.n}`;
         // Bild und „Folge N“ führen zur Folge; geschätzte Folgen (noch ohne Folgenseite) zur Serie
         const seriesUrl = path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`);
         const target = it.id ? path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`) : seriesUrl;
