@@ -73,6 +73,10 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   window.__clicks = 0;</script></head><body><video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
   <button id="sk" style="display:none;width:120px;height:30px" onclick="__clicks++;v.currentTime+=3">Intro überspringen</button>
   <script src="/src/skip.js"></script></body></html>`,
+  "/de/releasecalendar": () => `<!doctype html><html><head><meta charset="utf-8"></head><body>Crunchyroll-Kalender</body></html>`,
+  "/de/navtest": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <header><ul class="header-internal-links"><li><a href="/de/videos/new">Neu</a></li><li><a href="/de/simulcasts">Simulcast</a></li></ul></header>
+  <script src="/src/calnav.js"></script></body></html>`,
   "/de/watch/AAA111/folge-1": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted width="320" height="180"></video>
   <section><h4>Nächste Folge</h4><a href="/de/watch/BBB222/folge-2">Folge 2</a></section>
@@ -235,9 +239,11 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Taste F: nur Favoriten", only.on && only.shown === 1, `${only.shown} sichtbar`);
   await page.keyboard.press("f"); await page.waitForTimeout(300);
   await page.keyboard.press("t"); await page.waitForTimeout(400);
-  ok("Taste T öffnet Top 10", await page.evaluate(() => !!document.querySelector(".crlf-rpanel")));
-  await page.keyboard.press("t"); await page.waitForTimeout(400);
-  ok("Taste T schließt Top 10", await page.evaluate(() => !document.querySelector(".crlf-rpanel")));
+  if (!fs.readFileSync(path.join(SRC, "languages.js"), "utf8").includes("featureRank: false")) {
+    ok("Taste T öffnet Top 10", await page.evaluate(() => !!document.querySelector(".crlf-rpanel")));
+    await page.keyboard.press("t"); await page.waitForTimeout(400);
+    ok("Taste T schließt Top 10", await page.evaluate(() => !document.querySelector(".crlf-rpanel")));
+  } else ok("Taste T (öffentlich, ohne Top 10): öffnet nichts", await page.evaluate(() => !document.querySelector(".crlf-rpanel")));
 
   // Messung (diag): Zeiten der Durchläufe
   const stats = await page.evaluate(() => Object.fromEntries([...crlfDiagStats].map(([k, s]) => [k, { n: s.n, max: Math.round(s.max) }])));
@@ -505,6 +511,12 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     || (st.cards.some((c) => c.t === "Anime F Season 1 Part 3 (Italian Dub)") && st.cards.some((c) => c.t === "Anime E Staffel 2")), JSON.stringify(st.cards.map((c) => c.t)));
   ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
+  const today = await page.evaluate(() => { const c = document.querySelector("section.day[data-crlf-today]"); if (!c) return null;
+    const cs = getComputedStyle(c), h = getComputedStyle(c.querySelector(":scope > h1"));
+    return { shadow: cs.boxShadow, under: h.borderBottomWidth + " " + h.borderBottomStyle, n: document.querySelectorAll("section.day[data-crlf-today]").length }; });
+  if (process.env.BR_SHOT) await page.screenshot({ path: process.env.BR_SHOT });
+  ok("Eigener Kalender: heute deutlich umrandet, Tageskopf unterstrichen", today && today.n === 1 && /0px 0px 0px 2px inset/.test(today.shadow)
+    && today.under === "3px solid", JSON.stringify(today));
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
   await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
   const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
@@ -547,6 +559,17 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       ok("Vorschau geschätzte Folge: zeigt zuletzt erschienene Folge mit Fortschritt", pk && /Folge 7/.test(pk.ep) && /Zuletzt/.test(pk.ep) && pk.thumb && pk.bar === "50%" && pk.btn === "Abspielen", JSON.stringify(pk));
     }
   }
+  // zweite Fassung installiert: eine fremde Umleitung (br=…) baut diese Fassung nicht
+  await page.goto(BASE + "/robots.txt?simulcastcalendar&br=fremd&p=de/");
+  await page.waitForTimeout(600);
+  ok("Eigener Kalender: Umleitung der anderen Fassung wird nicht gebaut", await page.evaluate(() => !document.querySelector("body.crlf-calbuild")));
+  // Schalter „Aus“: kein eigener Kalender, weiter zum Kalender von Crunchyroll
+  await page.evaluate(() => chrome.storage.sync.set({ active: false }));
+  await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/");
+  await page.waitForURL(/\/de\/releasecalendar$/, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  ok("Schalter Aus: Kalender-Adresse führt zu Crunchyroll", new URL(page.url()).pathname === "/de/releasecalendar", page.url());
+  await page.evaluate(() => chrome.storage.sync.set({ active: true })).catch((e) => errors.push("Aus: " + e.message));
   ok("Eigener Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
@@ -755,6 +778,32 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
+// ===== 3e2. Reiter „Release-Kalender“ und Schalter „Aus“ =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE + "/de/navtest");
+  await page.waitForTimeout(300);
+  const tab = () => page.evaluate(() => document.querySelectorAll(".crlf-navcal").length);
+  const onTab = await tab();
+  await page.evaluate(() => chrome.storage.sync.set({ active: false }));
+  await page.waitForTimeout(200);
+  const offTab = await tab();
+  await page.goto(BASE + "/de/navtest");
+  await page.waitForTimeout(300);
+  const offLoad = await tab();
+  await page.evaluate(() => { const a = document.createElement("a"); a.href = "/de/releasecalendar"; a.id = "rc"; a.textContent = "x"; document.body.append(a);
+    window.__left = 0; addEventListener("click", (e) => { window.__left = e.defaultPrevented ? 1 : 2; e.preventDefault(); }); document.getElementById("rc").click(); });
+  const offClick = await page.evaluate("window.__left");
+  await page.evaluate(() => chrome.storage.sync.set({ active: true }));
+  await page.waitForTimeout(200);
+  ok("Reiter Release-Kalender: an = da, aus = weg (auch nach Neuladen), wieder an = da", onTab === 1 && offTab === 0 && offLoad === 0 && (await tab()) === 1,
+    JSON.stringify({ onTab, offTab, offLoad }));
+  ok("Schalter Aus: Klick auf Crunchyroll-Kalender wird nicht abgefangen", offClick === 2, String(offClick));
+  ok("Reiter ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
 // ===== 3f. End-Wächter, Pause von selbst, Fahrtenschreiber, nächste Folge aus dem Katalog =====
 {
   const page = await browser.newPage();
@@ -929,6 +978,29 @@ if (BG.includes("crlf-update-check")) {
   ok("Update-Symbol: Kalender öffnen prüft nach 15 Min.", asked === 1 && /upd/.test(icons.at(-1)[16]), `${asked} Prüfungen`);
   for (const f of Object.values(icons[0])) ok(`Update-Symbol: ${f} vorhanden`, fs.existsSync(path.join(SRC, f)));
 } else ok("Öffentliche Fassung: ohne Update-Helfer", !BG.includes("sendNativeMessage") && !BG.includes("nativeMessaging"));
+
+// ===== 5b. Schalter „Aus“: Umleitung der Kalender-Adressen ab- und wieder anschalten =====
+{
+  const dnr = [], changed = [], noop = { addListener() {} };
+  let active;
+  const chrome = { runtime: { onMessage: noop, onInstalled: noop, onStartup: noop, getURL: (p) => p, lastError: null, sendNativeMessage: () => {} },
+    action: { setIcon() {}, setTitle() {} }, alarms: { get: (n, cb) => cb({}), create() {}, onAlarm: noop },
+    declarativeNetRequest: { updateEnabledRulesets: async (o) => { dnr.push(o); } },
+    storage: { onChanged: { addListener: (f) => changed.push(f) }, local: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+      sync: { get: async (d) => (active === undefined ? { ...d } : { ...d, active }), set: async () => {} } },
+    permissions: { onAdded: noop, onRemoved: noop } };
+  active = false;
+  vm.runInContext(BG, vm.createContext({ console, setTimeout, clearTimeout, AbortController, URL, SyntaxError, fetch: async () => ({ ok: false }), chrome }));
+  await new Promise((r) => setTimeout(r, 20));
+  const atStart = JSON.stringify(dnr.at(-1));
+  changed.forEach((f) => f({ active: { oldValue: false, newValue: true } }, "sync"));
+  await new Promise((r) => setTimeout(r, 20));
+  const on = JSON.stringify(dnr.at(-1));
+  changed.forEach((f) => f({ active: { oldValue: true, newValue: false } }, "sync"));
+  await new Promise((r) => setTimeout(r, 20));
+  ok("Schalter Aus: Kalender-Umleitung beim Start aus, beim Einschalten an, beim Ausschalten aus",
+    atStart === '{"disableRulesetIds":["calendar"]}' && on === '{"enableRulesetIds":["calendar"]}' && JSON.stringify(dnr.at(-1)) === atStart, JSON.stringify(dnr));
+}
 
 // ===== 6. Design „Video“: jedes Motiv hat Video, Standbild und Eintrag in der Popup-Auswahl =====
 {

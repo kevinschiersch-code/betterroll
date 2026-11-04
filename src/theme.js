@@ -26,7 +26,12 @@ const CRLF_VIDEOS = ["haus_1", "baum_1", "altstadt_2", "leuchtturm_1", "regen_1"
 let crlfVideo = "auto"; // ein Name aus CRLF_VIDEOS oder "auto" (wechselnd)
 
 // Klassen am <html> setzen: crlf-themed (Add-on an), crlf-dark, crlf-bg + crlf-bg-<name> (Hintergrund-Design)
+// Zwei BetterRoll gleichzeitig (z. B. öffentliche Fassung zum Testen, private nur per Schalter aus): Wer das Design
+// gesetzt hat, steht in data-crlf-owner; ein ausgeschaltetes BetterRoll fasst das Design eines anderen nicht an.
 function crlfApplyTheme(theme) {
+  const root = document.documentElement, me = chrome.runtime.id;
+  if (!crlfActive && root.dataset.crlfOwner && root.dataset.crlfOwner !== me) return;
+  if (crlfActive) root.dataset.crlfOwner = me; else delete root.dataset.crlfOwner;
   document.documentElement.classList.toggle("crlf-themed", crlfActive);
   document.documentElement.classList.toggle("crlf-dark", crlfActive && theme === "dark");
   // Hintergrund-Designs (Aurora, Glow, Raster, Bild, Video) sind dunkle Designs; im hellen Modus aus

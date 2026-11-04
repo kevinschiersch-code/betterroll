@@ -234,6 +234,20 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
 });
 
+// ===== An/Aus-Schalter =====
+// „Aus“ heißt ganz aus: auch die Umleitung der Kalender-Adressen (rules.json) wird abgeschaltet, damit Crunchyroll
+// seinen eigenen Kalender zeigt und ein zweites installiertes BetterRoll die Seite allein bekommt. Die Inhaltsskripte
+// prüfen „active“ selbst; Chrome setzt die Regeln nach einem Update auf den Stand im Manifest zurück, darum auch beim Start.
+async function brSyncActive(active) {
+  if (typeof active !== "boolean") ({ active = true } = await chrome.storage.sync.get({ active: true }));
+  const on = active ? { enableRulesetIds: ["calendar"] } : { disableRulesetIds: ["calendar"] };
+  try { await chrome.declarativeNetRequest.updateEnabledRulesets(on); } catch (e) {}
+}
+chrome.runtime.onStartup.addListener(() => brSyncActive());
+chrome.runtime.onInstalled.addListener(() => brSyncActive());
+chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && c.active) brSyncActive(c.active.newValue !== false); });
+brSyncActive();
+
 // ===== 4. Favoriten über alle Geräte (storage.sync) =====
 // ★/▼ liegen in storage.local "marks" (schnell, ohne Grenzen). Dieser Abschnitt spiegelt sie ins Browser-Konto
 // (Chrome-/Firefox-Synchronisierung), damit jeder PC desselben Kontos dieselben Markierungen hat.
@@ -389,3 +403,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true;
 });
 // @updater-end
+

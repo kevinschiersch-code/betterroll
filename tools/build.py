@@ -104,10 +104,15 @@ def public_variant(folder: Path, firefox: bool):
     h = ph.read_text(encoding="utf-8")
     # Schalter „Messung“ ausblenden; popup.js liest das Feld weiter, darum bleibt ein verstecktes Kästchen
     # dasselbe für den Kommentare-Knopf (💬): gibt es in der öffentlichen Linie nicht (Wunsch Enigma, 04.11.2026)
-    for fid in ("diag", "featureComments"):
+    # ebenso „Top 10“ (featureRank) und „Kopfbereich ausblenden“ (hideTop, auf der eigenen Kalenderseite ohne Wirkung)
+    for fid in ("diag", "featureComments", "featureRank", "hideTop"):
         a = h.rindex("<label", 0, h.index(f'id="{fid}"'))
         h = h[:a] + f'<input type="checkbox" id="{fid}" hidden>' + h[h.index("</label>", a) + len("</label>"):]
     h = h.replace('<input type="url" id="bannerUrl"', '<input type="url" id="bannerUrl" hidden', 1)
+    # Design „Bild“ (eigenes Bild per Adresse/Datei) weg: die Anime-Motive stecken im Design „Video“
+    b = '<label><input type="radio" name="design" value="banner">'
+    assert b in h
+    h = h.replace(b, '<label hidden style="display:none"><input type="radio" name="design" value="banner">', 1)
     # „Letzte Fehler“ und „Sicherung“ ausblenden (popup.js greift weiter auf die Felder zu, darum nur versteckt)
     for cls in ('<div class="errs">', '<div class="errs backup">'):
         assert cls in h, cls
@@ -120,8 +125,10 @@ def public_variant(folder: Path, firefox: bool):
         w = cut(w, "<article><b>💬</b>", "</article>")
     wh.write_text(w, encoding="utf-8")
     # Standard: Kommentare aus, Hintergrund „Video“ mit wechselnden Motiven (pageVideo „auto“ ist schon Standard)
-    for name, old, new in (("languages.js", "featureComments: true", "featureComments: false"), ("languages.js", 'pageBg: "aurora"', 'pageBg: "video"'),
-                           ("theme-start.js", 'pageBg: "aurora"', 'pageBg: "video"'), ("theme.js", 'let crlfBg = "aurora";', 'let crlfBg = "video";')):
+    for name, old, new in (("languages.js", "featureComments: true", "featureComments: false"), ("languages.js", "featureRank: true", "featureRank: false"), ("languages.js", 'pageBg: "aurora"', 'pageBg: "video"'),
+                           ("theme-start.js", 'pageBg: "aurora"', 'pageBg: "video"'), ("theme.js", 'let crlfBg = "aurora";', 'let crlfBg = "video";'),
+                           # eigene Kennung in der Kalender-Umleitung: neben der privaten Fassung baut jede nur ihre Seite
+                           ("rules.json", "br=priv", "br=pub"), ("calbuild.js", 'const LINE = "priv";', 'const LINE = "pub";')):
         f = folder / name
         t = f.read_text(encoding="utf-8")
         assert old in t, (name, old)

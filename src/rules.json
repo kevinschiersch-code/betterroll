@@ -5,7 +5,7 @@
     "action": {
       "type": "redirect",
       "redirect": {
-        "regexSubstitution": "https://www.crunchyroll.com/robots.txt?simulcastcalendar&p=\\1&\\2"
+        "regexSubstitution": "https://www.crunchyroll.com/robots.txt?simulcastcalendar&br=priv&p=\\1&\\2"
       }
     },
     "condition": {
