@@ -19,14 +19,17 @@ async function crlfCatClient() {
     const res = await fetch(m ? `/${m[1]}/` : "/", { credentials: "omit" });
     if (!res.ok) throw new Error(`Startseite HTTP ${res.status}`);
     const html = await res.text();
-    const pick = (k) => { const r = html.match(new RegExp(`["']?${k}["']?\\s*:\\s*["']([^"']*)["']`)); return r ? r[1] : null; };
+    // auch in den Daten der Next.js-Seite (self.__next_f), dort mit \" statt "
+    const pick = (k) => { const r = html.match(new RegExp(`\\\\?["']?${k}\\\\?["']?\\s*:\\s*\\\\?["']([^"'\\\\]*)\\\\?["']`)); return r ? r[1] : null; };
     const cfg = { id: pick("anonClientId") || pick("accountAuthClientId"), secret: pick("anonClientSecret") || "", t: Date.now() };
     if (!cfg.id) throw new Error("Kennung der Web-App nicht gefunden");
     await chrome.storage.local.set({ crCatCfg: cfg });
     return cfg;
   } catch (e) {
-    // Startseite nicht lesbar: bekannte Kennung der Web-App (Stand 11/2026), beim nächsten Mal wieder versuchen
-    return { id: "cr_web", secret: "", t: 0 };
+    // Startseite nicht lesbar: bekannte Kennung der Web-App (Stand 11/2026), 1 Tag lang, dann wieder die Startseite
+    const cfg = { id: "cr_web", secret: "", t: Date.now() - 6 * 864e5 };
+    chrome.storage.local.set({ crCatCfg: cfg }).catch(() => {});
+    return cfg;
   }
 }
 

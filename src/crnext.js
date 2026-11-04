@@ -1,5 +1,5 @@
 // crnext.js – nur private Fassung (build.py lässt die Datei im Store-Paket weg). Kennt die nächste Folge aus dem
-// öffentlichen Crunchyroll-Katalog, ohne Anmeldung: anonymer Schlüssel wie in crcatalog.js (grant_type=client_id, keine
+// öffentlichen Crunchyroll-Katalog, ohne Anmeldung: anonymer Schlüssel wie in crauth.js (grant_type=client_id, keine
 // Cookies, kein Konto, nur Katalogdaten; Kennung der Web-App gemeinsam in storage.local crCatCfg). skip.js fragt 90 s
 // vor Schluss einmal nach und nutzt die Adresse nur, wenn am Folgenende weder Knopf noch Link „Nächste Folge“ helfen.
 // Gleiche Sprachfassung: Die Staffel-ID einer Folge gehört zu genau einer Fassung (wie in calbuild.js). Noch nicht
@@ -11,18 +11,23 @@
   const LOCALES = { de: "de-DE", fr: "fr-FR", es: "es-419", "es-es": "es-ES", "pt-br": "pt-BR", "pt-pt": "pt-PT", it: "it-IT", ru: "ru-RU", ar: "ar-SA", hi: "hi-IN" };
   const locale = () => LOCALES[pre().toLowerCase()] || "en-US";
 
-  // öffentliche Kennung der Web-App für anonyme Besucher (steht im HTML der Startseite); 7 Tage gemerkt
+  // öffentliche Kennung der Web-App für anonyme Besucher (steht im HTML der Startseite); 7 Tage gemerkt. Steht sie dort
+  // nicht mehr (neue Seite seit 31.10.2026): bekannte Kennung der Web-App wie in crauth.js, beim nächsten Mal neu suchen
   async function client() {
     const { crCatCfg: c } = await chrome.storage.local.get("crCatCfg");
     if (c && c.id && Date.now() - c.t < 7 * 864e5) return c;
-    const res = await fetch(pre() ? `/${pre()}/` : "/", { credentials: "omit" });
-    if (!res.ok) throw new Error(`Startseite HTTP ${res.status}`);
-    const html = await res.text();
-    const pick = (k) => { const r = html.match(new RegExp(`["']?${k}["']?\\s*:\\s*["']([^"']*)["']`)); return r ? r[1] : null; };
-    const cfg = { id: pick("anonClientId") || pick("accountAuthClientId"), secret: pick("anonClientSecret") || "", t: Date.now() };
-    if (!cfg.id) throw new Error("Kennung der Web-App nicht gefunden");
-    await chrome.storage.local.set({ crCatCfg: cfg });
-    return cfg;
+    try {
+      const res = await fetch(pre() ? `/${pre()}/` : "/", { credentials: "omit" });
+      if (!res.ok) throw new Error(`Startseite HTTP ${res.status}`);
+      const html = await res.text();
+      const pick = (k) => { const r = html.match(new RegExp(`["']?${k}["']?\\s*:\\s*["']([^"']*)["']`)); return r ? r[1] : null; };
+      const cfg = { id: pick("anonClientId") || pick("accountAuthClientId"), secret: pick("anonClientSecret") || "", t: Date.now() };
+      if (!cfg.id) throw new Error("Kennung der Web-App nicht gefunden");
+      await chrome.storage.local.set({ crCatCfg: cfg });
+      return cfg;
+    } catch (e) {
+      return { id: "cr_web", secret: "", t: 0 };
+    }
   }
   // anonymer Zugangsschlüssel (nur im Arbeitsspeicher, läuft nach Minuten ab)
   async function token() {

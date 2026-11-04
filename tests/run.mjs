@@ -101,7 +101,7 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   window.fetch = async (url, opt = {}) => {
     url = String(url); window.__api.push(url.split("?")[0] + " " + ((opt.headers && opt.headers.Authorization) || ""));
     const J = (o) => new Response(JSON.stringify(o));
-    if (url === "/de/") return new Response('<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
+    if (url === "/de/") return new Response(location.search.includes("noid") ? "<html>neue Seite ohne Kennung</html>" : '<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
     if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
     const ep = url.match(new RegExp("cms.objects.([A-Z0-9]+)"));
     if (ep) return J({ data: [{ id: ep[1], episode_metadata: { season_id: "S6" } }] });
@@ -188,7 +188,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const before = line.textContent.includes("Verfügbar");
     const tag = card.querySelector(".crlf-tag"), talk0 = line.querySelector(".crlf-btn-talk");
     const mid = (e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
-    const oneRow = !!(tag && line.contains(tag) && !!(tag.compareDocumentPosition(talk0) & Node.DOCUMENT_POSITION_FOLLOWING) && Math.abs(mid(tag) - mid(talk0)) < 4);
+    // öffentliche Linie: 💬 ist dort aus (versteckt), dann nur Sprache in der Zeile
+    const oneRow = !!(tag && line.contains(tag) && (talk0.hidden || (!!(tag.compareDocumentPosition(talk0) & Node.DOCUMENT_POSITION_FOLLOWING) && Math.abs(mid(tag) - mid(talk0)) < 4)));
     const fresh = document.createElement("div");
     fresh.className = "episode";
     fresh.innerHTML = "<span>Folge 9</span> <span>Verfügbar</span>";
@@ -455,6 +456,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       ep("ED3X", 3, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
       ep("EF7", 7, now - 5 * H, "Anime F", "GF", "SFI", "it-IT", "Season 1 Part 3"),
       { ...ep("EE9", 9, now - 5 * H, "Anime E", "GE", "SE", "ja-JP", "Staffel 2"), _sn: 4 },
+      // Platzhalter bei Crunchyroll (Serie ohne Namen) wird weggelassen
+      ep("EP3", 3, now - 1 * H, "Staffel 1", "GT00393120", "SP", "ja-JP", "Staffel 1"),
     ];
     for (const e of ALL) if (e._sn) e.episode_metadata.season_number = e._sn;
     const J = (o) => new Response(JSON.stringify(o));
@@ -507,6 +510,17 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
     cards: document.querySelectorAll("article.release").length }));
   ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
+  ok("Eigener Kalender: Platzhalter-Serie ohne Namen weggelassen", !st.cards.some((c) => /^Staffel 1/.test(c.t)), JSON.stringify(st.cards.map((c) => c.t)));
+  // „↻ Neu laden“: ruft die laufende Woche neu ab, die Karten bleiben dabei stehen
+  const rl = await page.evaluate(async () => {
+    const before = window.__calls.length;
+    document.querySelector(".crlf-calreload").click();
+    const kept = document.querySelectorAll("article.release").length;
+    await new Promise((r) => setTimeout(r, 600));
+    return { kept, fetched: window.__calls.slice(before).filter((u) => u.startsWith("/content/v2/discover/browse")).length,
+      cards: document.querySelectorAll("article.release").length, stamp: document.querySelector(".crlf-calstamp").textContent };
+  });
+  ok("Eigener Kalender: „↻ Neu laden“ ruft neu ab, Karten bleiben stehen", rl.kept === st.cards.length && rl.fetched >= 1 && rl.cards === st.cards.length && /Stand/.test(rl.stamp), JSON.stringify(rl));
   // nächste Woche: geschätzte Folge von Anime B (7 + 1); die Vorschau zeigt die zuletzt erschienene Folge 7 mit Fortschritt
   if (inWeek(now - 4 * H)) {
     const nextMon = new Date(week0 + 7 * D + 12 * H), ymd = `${nextMon.getFullYear()}-${String(nextMon.getMonth() + 1).padStart(2, "0")}-${String(nextMon.getDate()).padStart(2, "0")}`;
@@ -555,19 +569,25 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.goto(BASE + "/src/popup.html");
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById("more").open = true; });
-  const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
-  ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
-  const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
-  await dl.saveAs(file);
-  const toast = await page.evaluate(() => !document.getElementById("toast").hidden);
-  await page.evaluate(() => { sessionStorage.setItem("st_sync", "{}"); sessionStorage.setItem("st_local", "{}"); });
-  await page.setInputFiles("#bkFile", file);
-  await page.waitForTimeout(400);
-  const back = await page.evaluate(() => [JSON.parse(sessionStorage.getItem("st_sync")), JSON.parse(sessionStorage.getItem("st_local"))]);
-  ok("Popup: Sichern mit Rückmeldung", toast);
-  ok("Popup: Laden übernimmt nur sichere Titel-Zuordnungen", back[1].alMap && Object.keys(back[1].alMap).join() === "frieren", JSON.stringify(back[1].alMap));
-  ok("Popup: Laden stellt Stand wieder her", back[0].favTop === false && back[0].pageTheme === "light" && back[1].marks.frieren === "fav" && back[1].playerSpeed === 1.25);
+  // öffentliche Linie: „Letzte Fehler“ und „Sicherung“ sind dort ausgeblendet
+  const LITE = await page.evaluate(() => !!document.querySelector(".errs.backup[hidden]"));
+  if (LITE) ok("Popup (öffentlich): Fehlerliste, Sicherung und Kommentare-Schalter ausgeblendet", await page.evaluate(() => [...document.querySelectorAll(".errs")].every((e) => e.offsetParent === null)
+    && document.getElementById("featureComments").hidden));
+  else {
+    const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
+    ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
+    const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
+    await dl.saveAs(file);
+    const toast = await page.evaluate(() => !document.getElementById("toast").hidden);
+    await page.evaluate(() => { sessionStorage.setItem("st_sync", "{}"); sessionStorage.setItem("st_local", "{}"); });
+    await page.setInputFiles("#bkFile", file);
+    await page.waitForTimeout(400);
+    const back = await page.evaluate(() => [JSON.parse(sessionStorage.getItem("st_sync")), JSON.parse(sessionStorage.getItem("st_local"))]);
+    ok("Popup: Sichern mit Rückmeldung", toast);
+    ok("Popup: Laden übernimmt nur sichere Titel-Zuordnungen", back[1].alMap && Object.keys(back[1].alMap).join() === "frieren", JSON.stringify(back[1].alMap));
+    ok("Popup: Laden stellt Stand wieder her", back[0].favTop === false && back[0].pageTheme === "light" && back[1].marks.frieren === "fav" && back[1].playerSpeed === 1.25);
+  }
   await page.waitForTimeout(1500);
   ok("Popup ohne Skriptfehler", !errors.length, errors.join(" | "));
   await ctx.close();
@@ -789,6 +809,16 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     ok("Nächste Folge: ohne Knopf und Link die Katalog-Adresse geöffnet", /\/de\/watch\/GGG777\/folge-7$/.test(page.url()), page.url());
     const log2 = await endLog();
     ok("Fahrtenschreiber läuft auf der neuen Seite weiter", ["Katalog: nächste Folge /de/watch/GGG777/folge-7", "Katalog-Adresse der nächsten Folge geöffnet", "Seite geladen: /watch/GGG777/folge-7", "andere Folge läuft: /watch/GGG777/folge-7"].every((x) => log2.includes(x)), log2.slice(-700));
+  }
+  if (fs.existsSync(path.join(SRC, "crnext.js"))) { // nur private Fassung
+    // neue Crunchyroll-Seite ohne Kennung im HTML: bekannte Kennung der Web-App (wie crauth.js)
+    const p2 = await browser.newPage();
+    p2.on("pageerror", (e) => errors.push(e.message));
+    await p2.goto(BASE + "/de/watch/FFF666/folge-6?noid");
+    const cat2 = await p2.evaluate(async () => [await crlfNextUrl("FFF666"), __api.slice()]);
+    ok("Katalog: ohne Kennung auf der Startseite mit der bekannten Kennung der Web-App", cat2[0] === BASE + "/de/watch/GGG777/folge-7"
+      && cat2[1].includes("/auth/v1/token Basic " + Buffer.from("cr_web:").toString("base64")), JSON.stringify(cat2));
+    await p2.close();
   }
   ok("End-Wächter/Katalog ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();

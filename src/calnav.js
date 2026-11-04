@@ -27,6 +27,7 @@
   };
   const add = () => {
     watch();
+    if (document.body && document.body.classList.contains("crlf-calbuild")) return; // eigener Kalender: eigene Kopfzeile
     // Menü suchen: bisher .header-internal-links; falls Crunchyroll die Klassen ändert, über den Simulcast-Link oben.
     let box = document.querySelector(".header-internal-links");
     if (!box) {
