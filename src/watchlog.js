@@ -7,11 +7,15 @@
   const KEEP = 3000, EVERY = 15e3;
   const vid = () => [...document.querySelectorAll("video")].find((v) => !v.closest(".crlf-video-layer, #crlf-video") && v.duration > 60);
   const frac = (v) => (v && isFinite(v.duration) && v.duration > 0 ? Math.min(1, v.currentTime / v.duration) : null);
+  // Schalter „Aus“: nichts tun
+  let on = true;
+  chrome.storage.sync.get({ active: true }, (r) => { on = r.active !== false; });
+  chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && c.active) on = c.active.newValue !== false; });
 
   // im Player-iframe: nur messen und melden
   if (window.top !== window) {
     let last = 0;
-    const send = () => { const p = frac(vid()); if (p !== null) window.top.postMessage({ crlfProg: p }, "https://www.crunchyroll.com"); };
+    const send = () => { if (!on) return; const p = frac(vid()); if (p !== null) window.top.postMessage({ crlfProg: p }, "https://www.crunchyroll.com"); };
     document.addEventListener("timeupdate", () => { if (Date.now() - last > EVERY) { last = Date.now(); send(); } }, true);
     for (const ev of ["pause", "ended", "seeked"]) document.addEventListener(ev, send, true);
     return;
@@ -38,7 +42,7 @@
     chrome.storage.local.set({ epProg }).catch(() => {});
   };
   const note = (p, now) => {
-    if (typeof p !== "number" || !(p >= 0 && p <= 1) || !epId()) return;
+    if (!on || typeof p !== "number" || !(p >= 0 && p <= 1) || !epId()) return;
     pending = p;
     if (now || Date.now() - lastSave > EVERY) { clearTimeout(timer); save(); }
     else if (!timer) timer = setTimeout(save, EVERY);

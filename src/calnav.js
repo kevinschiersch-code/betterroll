@@ -11,8 +11,10 @@
   // Ganz neu laden, damit die Umleitung greift (die App würde sonst ihren eigenen Kalender einblenden).
   const go = (url) => { location.assign(url); };
   const isCal = (a) => { try { const u = new URL(a.href, location.href); return u.host === location.host && CAL.test(u.pathname); } catch { return false; } };
+  // Schalter „Aus“: nichts abfangen, kein eigener Reiter (Crunchyroll zeigt dann seinen Kalender)
+  let on = false;
   addEventListener("click", (e) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!on || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const a = e.target.closest && e.target.closest("a[href]");
     if (!a || !isCal(a) || (a.target && a.target !== "_self")) return;
     e.preventDefault(); e.stopImmediatePropagation();
@@ -21,12 +23,13 @@
   // Seitenwechsel innerhalb der App auf /releasecalendar: neu laden.
   let last = location.pathname;
   const watch = () => {
-    if (location.pathname === last) return;
+    if (!on || location.pathname === last) { last = location.pathname; return; }
     last = location.pathname;
     if (/releasecalendar\/?$/i.test(last)) go(location.href);
   };
   const add = () => {
     watch();
+    if (!on) return;
     if (document.body && document.body.classList.contains("crlf-calbuild")) return; // eigener Kalender: eigene Kopfzeile
     // Menü suchen: bisher .header-internal-links; falls Crunchyroll die Klassen ändert, über den Simulcast-Link oben.
     let box = document.querySelector(".header-internal-links");
@@ -44,6 +47,7 @@
     const ref = tiles.find((el) => /\/simulcast/i.test(linkOf(el).getAttribute("href") || "")) || tiles[tiles.length - 1];
     if (!ref) return;
     const item = ref.cloneNode(true);
+    item.classList.add("crlf-navitem");
     const a = linkOf(item);
     a.classList.add("crlf-navcal");
     a.classList.remove("news-link");
@@ -54,7 +58,14 @@
     text.textContent = label;
     ref.after(item);
   };
+  // beim Ausschalten den eigenen Reiter wieder entfernen (Crunchyroll-eigene Reiter nur zurückmarkieren)
+  const drop = () => {
+    for (const it of document.querySelectorAll(".crlf-navitem")) it.remove();
+    for (const a of document.querySelectorAll(".crlf-navcal")) a.classList.remove("crlf-navcal");
+  };
+  const set = (v) => { on = v !== false; if (on) add(); else drop(); };
+  chrome.storage.sync.get({ active: true }, (r) => set(r.active));
+  chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && c.active) set(c.active.newValue); });
   new MutationObserver(add).observe(document.documentElement, { childList: true, subtree: true });
   addEventListener("popstate", watch);
-  add();
 })();

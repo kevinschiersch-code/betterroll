@@ -808,7 +808,14 @@ function goToday() {
 
 // Kompletter Durchlauf über alle Einträge; läuft bei jeder Änderung der Seite oder der Einstellungen
 function applyFilter() { crlfTime("Filter und Sortierung", applyFilterNow); }
+// Zweites BetterRoll auf der Seite (z. B. öffentliche Fassung zum Testen) ist an, dieses hier per Schalter aus: nichts
+// anfassen, sonst sortieren beide gegeneinander (Springen, Flackern). Wer an ist, steht in data-crlf-owner (theme.js).
+function crlfYield() {
+  const o = document.documentElement.dataset.crlfOwner;
+  return !settings.active && !!o && o !== chrome.runtime.id;
+}
 function applyFilterNow() {
+  if (crlfYield()) return;
   // Hauptschalter aus: Knöpfe verstecken, alles in Originalreihenfolge und unverändert anzeigen
   document.documentElement.classList.toggle("crlf-off", !settings.active);
   if (!settings.active) restoreAvailable();
@@ -991,6 +998,7 @@ function fixCardsNow(mutations) {
     for (let p = card.parentElement && card.parentElement.closest(RELEASE_SELECTOR); p; p = p.parentElement && p.parentElement.closest(RELEASE_SELECTOR)) outer = p;
     if (releaseContainer(outer).classList.contains("crlf-item")) cards.add(outer);
   }
+  if (crlfYield()) return;
   for (const release of cards) {
     const title = releaseTitle(release);
     if (title !== null) ensureButtons(release, crBaseTitle(title));

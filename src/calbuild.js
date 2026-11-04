@@ -8,9 +8,16 @@
 // geschätzt (dafür die drei Wochen davor, ebenfalls je eine Abfrage, gemerkt).
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
+  // zweites BetterRoll (öffentliche und private Fassung gleichzeitig installiert): die Umleitung trägt die Linie (br=),
+  // gebaut wird nur von der Fassung, die umgeleitet hat; ausgeschaltet leitet eine Fassung gar nicht um (background.js)
+  const LINE = "priv";
+  const q = new URLSearchParams(location.search);
+  if (q.get("br") && q.get("br") !== LINE) return;
+  if (document.documentElement.dataset.crlfCalbuild) return;
+  document.documentElement.dataset.crlfCalbuild = chrome.runtime.id;
 
   // alte Adresse wiederherstellen (Sprache aus p=, sonst aus dem Browser)
-  const q = new URLSearchParams(location.search);
+  q.delete("br");
   let loc = (q.get("p") || "").replace(/\/$/, "");
   if (!/^[a-z]{2}(?:-[a-z]{2,3})?$/i.test(loc)) loc = /^de\b/i.test(navigator.language) ? "de" : "";
   q.delete("simulcastcalendar"); q.delete("p");
@@ -62,10 +69,12 @@
     /* feste Breite wie der alte Kalender: Browser-Zoom vergrößert die ganze Seite, nicht nur den Inhalt der Kacheln */
     .crlf-calweek { display: flex; align-items: flex-start; gap: 8px; padding: 0 24px 40px; width: max-content; margin: 0 auto; }
     .crlf-calweek section.day { flex: 0 0 190px; width: 190px; min-width: 0; position: relative; }
-    /* heute: etwas breiter, leicht hinterlegt, Akzentrahmen */
-    html body .crlf-calweek section.day[data-crlf-today] { flex-basis: 240px !important; width: 240px !important; border-radius: 14px;
-      background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.07) !important; box-shadow: inset 0 0 0 1px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); padding: 0 6px 6px !important; }
-    html body .crlf-calweek section.day[data-crlf-today] > h1 { color: var(--crlf-accent, #f47521) !important; }
+    /* heute: breiter, hinterlegt, deutlicher Rahmen in Akzentfarbe, Tageskopf unterstrichen */
+    html body .crlf-calweek section.day[data-crlf-today] { flex-basis: 240px !important; width: 240px !important; border-radius: 12px; box-sizing: border-box;
+      background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.09) !important; padding: 8px !important; margin-top: -8px;
+      box-shadow: inset 0 0 0 2px var(--crlf-accent, #f47521), 0 0 14px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.45) !important; }
+    html body .crlf-calweek section.day[data-crlf-today] > h1 { color: var(--crlf-accent, #f47521) !important; font-weight: 800;
+      padding-bottom: 4px; border-bottom: 3px solid var(--crlf-accent, #f47521); }
     /* Jetzt-Linie: alles darunter ist noch nicht erschienen; sie rutscht beim Erscheinen sanft nach unten */
     .crlf-nowline { position: absolute; left: 2px; right: 2px; height: 0; border-top: 2px solid var(--crlf-accent, #f47521); z-index: 3;
       pointer-events: none; transition: top .6s ease; box-shadow: 0 0 8px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.8); }
@@ -313,8 +322,20 @@
   }
 
   let running = false;
+  // Schalter „Aus“ (Umleitung kam noch durch, z. B. gerade umgeschaltet): zum Kalender von Crunchyroll, einmal je Minute
+  async function off() {
+    const { active = true } = await chrome.storage.sync.get({ active: true }).catch(() => ({}));
+    if (active !== false) return false;
+    let hop = 0;
+    try { hop = +sessionStorage.getItem("crlfOffHop") || 0; sessionStorage.setItem("crlfOffHop", Date.now()); } catch (e) {}
+    if (Date.now() - hop > 60e3) location.replace(path("releasecalendar"));
+    else msg.replaceChildren(el("a", { href: path("releasecalendar") }, de ? "BetterRoll ist ausgeschaltet – zum Kalender von Crunchyroll" : "BetterRoll is switched off – open the Crunchyroll calendar"));
+    if (!msg.isConnected) document.body.append(msg);
+    return true;
+  }
   async function run(force) {
     if (running) return;
+    if (await off()) return;
     running = true;
     force = force === true;
     const now = Date.now(), none = { t: 0, items: [] };
@@ -352,6 +373,8 @@
       if (typeof crlfError === "function") crlfError("Kalender", e);
     } finally { running = false; }
   }
+  // im offenen Kalender ausgeschaltet: zum Kalender von Crunchyroll wechseln
+  chrome.storage.onChanged.addListener((ch, area) => { if (area === "sync" && ch.active && ch.active.newValue === false) setTimeout(off, 300); });
   // crauth.js wird nach diesem Skript geladen: erst danach starten
   setTimeout(run, 0);
   // Inhalt von robots.txt: der Browser legt dafür eigene head/body/pre hinter unseren an; die wieder entfernen.

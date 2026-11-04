@@ -482,7 +482,7 @@ function crlfPeekEarly(card) {
   crlfEarlyT = setTimeout(async () => {
     crlfEarlyCard = null;
     if (crlfHoverCard !== card || !card.isConnected || !crlfWithin(card, 2) || (crlfPeekEl && crlfPeekCard === card)) return;
-    if (!document.documentElement.classList.contains("crlf-themed")) return;
+    if (!crlfActive || !document.documentElement.classList.contains("crlf-themed")) return; // eigener Schalter (zweites BetterRoll)
     const d = crlfPeekFromCard(card);
     if (!d) return;
     // Bild der Karte: Hochformat = Poster, Querformat = Folgenbild
@@ -597,7 +597,7 @@ function crlfStylePopup(pop) {
 // die keine Kalenderkarten enthält. Sie wird markiert (data-crlf-pop) und an crlfPeek übergeben.
 let crlfPopTimer = 0;
 function crlfSolidifyPopups(x, y) {
-  if (!document.documentElement.classList.contains("crlf-themed")) return;
+  if (!crlfActive || !document.documentElement.classList.contains("crlf-themed")) return; // eigener Schalter (zweites BetterRoll)
   for (const el of document.elementsFromPoint(x, y)) {
     if (el === document.body || el === document.documentElement) break;
     if (el.closest("[data-crlf-pop], .crlf-cpanel, .crlf-peek, #crlf-theme-toggle") || el.matches("img, video, picture, canvas, svg")) continue;
@@ -623,7 +623,7 @@ function crlfFindPopups() { crlfTime("Vorschau der Seite suchen", crlfFindPopups
 function crlfFindPopupsSince(since) { if (crlfPopRan < since) crlfFindPopups(); }
 function crlfFindPopupsNow() {
   crlfPopRan = performance.now();
-  if (!document.documentElement.classList.contains("crlf-themed")) return;
+  if (!crlfActive || !document.documentElement.classList.contains("crlf-themed")) return; // eigener Schalter (zweites BetterRoll)
   const vw = innerWidth, vh = innerHeight;
   for (const btn of document.querySelectorAll("button, a, [role=button]")) {
     if (!CRLF_POP_RE.test(btn.textContent.replace(/[^\p{L}\s]/gu, "")) || btn.closest(".crlf-cpanel, .crlf-peek")) continue;

@@ -30,7 +30,12 @@
 
   // die Seite wechselt Serien ohne Neuladen: Adresse regelmäßig prüfen, je Serie einmal speichern
   // (höchstens 30 Versuche je Serie; ohne Bewertung auf der Seite wird danach nicht mehr gesucht)
+  // Schalter „Aus“: nichts tun
+  let on = true;
+  chrome.storage.sync.get({ active: true }, (r) => { on = r.active !== false; });
+  chrome.storage.onChanged.addListener((c, area) => { if (area === "sync" && c.active) on = c.active.newValue !== false; });
   setInterval(() => {
+    if (!on) return;
     const id = seriesId();
     if (id !== lastId) { lastId = id; done = false; tries = 0; }
     if (!id || done || ++tries > 30) return;
