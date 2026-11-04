@@ -94,6 +94,27 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   pc.addEventListener("mousemove", () => { __moves++; if (!bar.firstChild && !window.__noBtn) bar.innerHTML = '<button data-testid="next-episode-button" style="width:40px;height:40px">⏭</button>'; });
   bar.addEventListener("pointerdown", () => { __down++; if (!window.__dead) location.hash = "weiter"; });</script>
   <script src="/src/skip.js"></script></body></html>`,
+  // Katalog-Weg (crnext.js): weder Knopf noch Link; Antworten des Katalogs im Test nachgestellt
+  "/de/watch/FFF666/folge-6": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script><script>
+  window.__api = [];
+  window.fetch = async (url, opt = {}) => {
+    url = String(url); window.__api.push(url.split("?")[0] + " " + ((opt.headers && opt.headers.Authorization) || ""));
+    const J = (o) => new Response(JSON.stringify(o));
+    if (url === "/de/") return new Response('<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
+    if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
+    const ep = url.match(new RegExp("cms.objects.([A-Z0-9]+)"));
+    if (ep) return J({ data: [{ id: ep[1], episode_metadata: { season_id: "S6" } }] });
+    if (url.startsWith("/content/v2/cms/seasons/S6/episodes")) return J({ data: [
+      { id: "HHH888", sequence_number: 8, availability_starts: "2020-01-03T00:00:00Z" },
+      { id: "FFF666", sequence_number: 6, availability_starts: "2020-01-01T00:00:00Z" },
+      { id: "GGG777", sequence_number: 7, slug_title: "folge-7", availability_starts: "2020-01-02T00:00:00Z" },
+      { id: "III999", sequence_number: 9, availability_starts: "9998-11-30T00:00:00Z" }] });
+    return new Response("", { status: 404 });
+  };</script></head><body><video id="v" src="/src/backgrounds/haus_1.webm" muted width="320" height="180"></video>
+  <script src="/src/crnext.js"></script><script src="/src/skip.js"></script></body></html>`,
+  "/de/watch/GGG777/folge-7": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <video id="v" src="/src/backgrounds/haus_1.webm" muted autoplay loop width="320" height="180"></video>
+  <script src="/src/skip.js"></script></body></html>`,
   "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>",
   "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
@@ -506,12 +527,15 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     sessionStorage.setItem("init", "1");
     sessionStorage.setItem("st_sync", JSON.stringify({ pageTheme: "light", favTop: false }));
     sessionStorage.setItem("st_local", JSON.stringify({ marks: { frieren: "fav", "one piece": "dim" }, playerSpeed: 1.25,
+      endLog: [{ id: 1, at: Date.now(), page: "/watch/X1/folge", frame: "Seite", ver: "test", lines: ["   0.0s 22:10.0  Start (letzte 90 s)"] }],
       alMap: { frieren: { id: 154587, title: "Frieren", url: "https://anilist.co/anime/154587" }, boese: { id: 1, url: "javascript:alert(1)" }, kaputt: { id: "x" } } }));
   });
   await page.addInitScript({ content: STUB });
   await page.goto(BASE + "/src/popup.html");
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById("more").open = true; });
+  const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
+  ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
   const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
   const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
   await dl.saveAs(file);
@@ -688,6 +712,62 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Nach Update: verbunden bleibt Folgenwechsel wie gehabt", connected[0] === "/de/watch/BBB222/folge-2" && connected[1] === 1, JSON.stringify(connected));
   ok("Nach Update: alte Skripte laden beim Folgenwechsel neu", orphan[0] === "/de/watch/BBB222/folge-2" && orphan[1] === 0 && orphan[2] === "Folge 2", JSON.stringify(orphan));
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
+// ===== 3f. End-Wächter, Pause von selbst, Fahrtenschreiber, nächste Folge aus dem Katalog =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const endLog = () => page.evaluate(() => { const l = JSON.parse(sessionStorage.getItem("st_local") || "{}").endLog || []; return l[0] ? l[0].lines.join("\n") : ""; });
+  // Zeit läuft bis 1412,0 und steht dann vor einer Lücke im Puffer (1412,0–1412,6), 8 s vor Schluss
+  const gapPage = async (fix) => { await page.goto(BASE + "/de/watch/CCC333/folge-3"); await page.evaluate((fix) => { const v = document.getElementById("v"); let pos = 1410, run = false; window.__seeks = [];
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; __seeks.push(+x.toFixed(2)); if (fix && x >= 1412.6) run = true; } });
+    Object.defineProperty(v, "buffered", { get: () => ({ length: 2, start: (i) => [1300, 1412.6][i], end: (i) => [1412.0, 1420][i] }) });
+    window.__onNext = () => { pos = 0; run = false; };
+    setInterval(() => { if (run) pos += 0.25; else if (pos < 1412) pos = Math.min(1412, pos + 0.25); }, 250);
+    return v.play(); }, fix); };
+  await gapPage(true);
+  await page.waitForTimeout(6500);
+  const gap = await page.evaluate("[__seeks.slice(), __next, document.getElementById('v').currentTime]");
+  ok("End-Wächter: steht vor Lücke im Puffer -> springt drüber, Rest läuft", JSON.stringify(gap[0]) === "[1412.65]" && gap[1] === 0 && gap[2] > 1413, JSON.stringify(gap));
+  await gapPage(false);
+  await page.waitForTimeout(8500);
+  const stuckNext = await page.evaluate("[__seeks.slice(), __next]");
+  ok("End-Wächter: steht danach weiter -> nächste Folge", stuckNext[0][0] === 1412.65 && stuckNext[1] === 1, JSON.stringify(stuckNext));
+  const log = await endLog();
+  ok("Fahrtenschreiber: Start, Hänger, Anstoßen, „ended“, Knopf und Folgenwechsel im Protokoll",
+    ["Start (letzte 90 s)", "Wächter 1: Zeit steht", "angestoßen, weiter bei 23:32", "Wächter 2", "„ended“ gemeldet", "Knopf „Nächste Folge“ gedrückt (Nächste Folge", "andere Folge läuft"].every((x) => log.includes(x)), log.slice(-900));
+  // Player hält 3 s vor Schluss von selbst an: nach 2 s weiter; eigene Pause bleibt
+  const pausePage = async () => { await page.goto(BASE + "/de/watch/CCC333/folge-3"); await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1417;
+    Object.defineProperty(v, "duration", { get: () => 1420 }); Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
+    window.__onNext = () => { pos = 0; }; return v.play(); }); await page.waitForTimeout(300); };
+  await pausePage();
+  await page.evaluate(() => document.getElementById("v").pause());
+  await page.waitForTimeout(1500);
+  const early = await page.evaluate("__next");
+  await page.waitForTimeout(1500);
+  ok("Pause von selbst kurz vor Schluss: nach 2 s nächste Folge", early === 0 && (await page.evaluate("__next")) === 1, `${early} / ${await page.evaluate("__next")}`);
+  await pausePage();
+  await page.click("#v");
+  await page.evaluate(() => document.getElementById("v").pause());
+  await page.waitForTimeout(3500);
+  ok("Eigene Pause kurz vor Schluss bleibt Pause", (await page.evaluate("__next")) === 0, `${await page.evaluate("__next")}x`);
+  // Katalog: Adresse der nächsten erschienenen Folge derselben Staffel
+  await page.goto(BASE + "/de/watch/FFF666/folge-6");
+  const cat = await page.evaluate(async () => [await crlfNextUrl("FFF666"), await crlfNextUrl("HHH888"), __api.slice()]);
+  ok("Katalog: nächste Folge der Staffel, noch nicht erschienene zählen nicht", cat[0] === BASE + "/de/watch/GGG777/folge-7" && cat[1] === "", JSON.stringify(cat.slice(0, 2)));
+  ok("Katalog: anonymer Schlüssel, je Folge einmal gefragt", cat[2].filter((x) => x.startsWith("/auth/v1/token Basic ")).length === 1
+    && cat[2].includes("/content/v2/cms/objects/FFF666 Bearer tok") && cat[2].filter((x) => x.startsWith("/content/v2/cms/objects/FFF666")).length === 1, JSON.stringify(cat[2]));
+  await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => 1420, set() {} }); v.dispatchEvent(new Event("ended")); });
+  await page.waitForURL(/GGG777/, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  ok("Nächste Folge: ohne Knopf und Link die Katalog-Adresse geöffnet", /\/de\/watch\/GGG777\/folge-7$/.test(page.url()), page.url());
+  const log2 = await endLog();
+  ok("Fahrtenschreiber läuft auf der neuen Seite weiter", ["Katalog: nächste Folge /de/watch/GGG777/folge-7", "Katalog-Adresse der nächsten Folge geöffnet", "Seite geladen: /watch/GGG777/folge-7", "andere Folge läuft: /watch/GGG777/folge-7"].every((x) => log2.includes(x)), log2.slice(-700));
+  ok("End-Wächter/Katalog ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
 // ===== 3e. Spul-Knöpfe in der Player-Leiste: [−10] ▶ [+10] −1:30 −30 +1:30, Klick spult, nicht bis über das Ende =====

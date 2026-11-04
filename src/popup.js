@@ -408,7 +408,7 @@ $("reload").addEventListener("click", () => {
 
 // Fehlerliste (Erweitert): letzte Fehler aus storage.local „crErrors“ (schreibt background.js), kopieren oder leeren
 const errLine = (e) => `${new Date(e.t).toLocaleString(crlfLang === "en" ? "en-GB" : "de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${e.where}: ${e.msg}${e.n > 1 ? ` (${e.n}×)` : ""}`;
-let errItems = [];
+let errItems = [], endItems = [];
 function showErrors(list) {
   errItems = list || [];
   const ol = $("errList");
@@ -419,19 +419,31 @@ function showErrors(list) {
     li.append(b, line.slice(i));
     return li;
   }));
-  $("errNone").hidden = errItems.length > 0;
-  $("errCopy").hidden = $("errClear").hidden = !errItems.length;
+  $("errNone").hidden = errItems.length > 0 || endItems.length > 0;
+  $("errCopy").hidden = $("errClear").hidden = !errItems.length && !endItems.length;
 }
-chrome.storage.local.get({ crErrors: [] }, ({ crErrors }) => showErrors(crErrors));
-chrome.storage.onChanged.addListener((c, area) => { if (area === "local" && c.crErrors) showErrors(c.crErrors.newValue); });
+// Folgenende-Protokoll (skip.js, storage.local „endLog“): wird beim Kopieren angehängt
+function showEnd(list) {
+  endItems = Array.isArray(list) ? list : [];
+  $("endInfo").textContent = endItems.length ? T("Folgenende-Protokoll: {0} Folge(n), wird mitkopiert", endItems.length) : "";
+  $("endInfo").hidden = !endItems.length;
+  showErrors(errItems);
+}
+const endText = () => endItems.length ? "\n\n" + T("Folgenende-Protokoll (neueste Folge zuerst; Zustand = readyState/networkState: 4 genug geladen, 3 etwas, 2 nur aktuelles Bild, 1 nur Metadaten; Netz 2 lädt, 1 wartet, 3 keine Quelle)") + "\n"
+  + endItems.map((r) => `== ${new Date(r.at).toLocaleString(crlfLang === "en" ? "en-GB" : "de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${r.page} · ${r.frame} · BetterRoll ${r.ver}\n${(r.lines || []).join("\n")}`).join("\n\n") : "";
+chrome.storage.local.get({ crErrors: [], endLog: [] }, ({ crErrors, endLog }) => { errItems = crErrors || []; showEnd(endLog); });
+chrome.storage.onChanged.addListener((c, area) => {
+  if (area === "local" && c.crErrors) showErrors(c.crErrors.newValue);
+  if (area === "local" && c.endLog) showEnd(c.endLog.newValue);
+});
 $("errCopy").addEventListener("click", () => {
   const ver = chrome.runtime.getManifest().version;
-  navigator.clipboard.writeText(`BetterRoll ${ver}\n` + errItems.map(errLine).join("\n")).then(() => {
+  navigator.clipboard.writeText(`BetterRoll ${ver}\n` + errItems.map(errLine).join("\n") + endText()).then(() => {
     $("errCopy").textContent = T("Kopiert");
     setTimeout(() => { $("errCopy").textContent = T("Kopieren"); }, 1500);
   }).catch(() => {});
 });
-$("errClear").addEventListener("click", () => chrome.storage.local.remove("crErrors"));
+$("errClear").addEventListener("click", () => chrome.storage.local.remove(["crErrors", "endLog"]));
 
 // Sicherung (Erweitert): Einstellungen, ★/▼, eigene Zuordnungen (💬/Poster), Hintergrundbild und Tempo als Datei
 // auf diesem PC. Laden prüft jeden Wert (nur bekannte Schlüssel, passender Typ) und ersetzt dann den Stand.

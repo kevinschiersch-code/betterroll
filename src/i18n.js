@@ -107,6 +107,8 @@ var CRLF_EN = {
   "Letzte Fehler": "Recent errors",
   "keine": "none",
   "Kopieren": "Copy",
+  "Folgenende-Protokoll: {0} Folge(n), wird mitkopiert": "Episode-end log: {0} episode(s), copied along",
+  "Folgenende-Protokoll (neueste Folge zuerst; Zustand = readyState/networkState: 4 genug geladen, 3 etwas, 2 nur aktuelles Bild, 1 nur Metadaten; Netz 2 lädt, 1 wartet, 3 keine Quelle)": "Episode-end log (newest episode first; state = readyState/networkState: 4 enough data, 3 some, 2 current frame only, 1 metadata only; network 2 loading, 1 idle, 3 no source)",
   "Kopiert": "Copied",
   "Leeren": "Clear",
   "Sicherung": "Backup",

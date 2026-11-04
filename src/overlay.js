@@ -60,6 +60,8 @@
   }
   function close(el, btn) {
     tried.add(el);
+    // Fahrtenschreiber am Folgenende (skip.js): festhalten, was geschlossen wurde
+    if (typeof crlfEndRec === "function") crlfEndRec(`overlay.js schließt Fenster: ${(ident(el).trim() || el.tagName).slice(0, 60)}`);
     el.style.setProperty("visibility", "hidden", "important"); // nicht erst aufblitzen lassen
     btn.click();
     setTimeout(() => { if (el.isConnected) el.style.removeProperty("visibility"); }, 1500); // ging nicht zu: wieder zeigen

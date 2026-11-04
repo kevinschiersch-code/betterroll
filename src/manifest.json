@@ -68,7 +68,8 @@
       "js": [
         "series.js",
         "overlay.js",
-        "calnav.js"
+        "calnav.js",
+        "crnext.js"
       ],
       "run_at": "document_idle"
     },
