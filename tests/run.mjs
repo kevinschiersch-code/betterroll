@@ -86,10 +86,18 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   <button aria-label="10 Sekunden vorspulen" type="button" class="kat:h-44 kat:w-44" data-testid="jump-forward-button" onclick="event.stopPropagation()"><svg width="44" height="44" viewBox="0 0 24 24" data-testid="jump-forward-icon"><path d="M12 0l6 4-6 4z"/></svg></button>
   <span data-testid="timestamp">0:00</span></div></div></div>
   <script>window.__root = 0;</script><script src="/src/jump.js"></script></body></html>`,
+  // Player-Leiste erst nach Mausbewegung (Stand 31.10.), Knopf reagiert nur auf pointerdown, nicht auf .click()
+  "/de/watch/EEE555/folge-5": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <div id="pc"><video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video><div id="bar"></div></div>
+  <div data-t="next-episode-card"><a href="/de/watch/BBB222/folge-2" data-t="next-ep">Folge 2</a></div>
+  <script>window.__moves = 0; window.__down = 0;
+  pc.addEventListener("mousemove", () => { __moves++; if (!bar.firstChild && !window.__noBtn) bar.innerHTML = '<button data-testid="next-episode-button" style="width:40px;height:40px">⏭</button>'; });
+  bar.addEventListener("pointerdown", () => { __down++; if (!window.__dead) location.hash = "weiter"; });</script>
+  <script src="/src/skip.js"></script></body></html>`,
   "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>",
   "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
-  <button aria-label="Vorherige Folge" onclick="__prev++">⏮</button><button aria-label="Nächste Folge" onclick="__next++">⏭</button>
+  <button aria-label="Vorherige Folge" onclick="__prev++">⏮</button><button aria-label="Nächste Folge" onclick="__next++; location.hash = 'n' + __next; window.__onNext && __onNext()">⏭</button>
   <button id="ab" style="display:none;width:160px;height:30px" onclick="__ab++">Abspann überspringen</button>
   <script>window.__prev = 0; window.__next = 0; window.__ab = 0;</script><script src="/src/skip.js"></script></body></html>` };
 // langsam ladende Bilder (Vorschau: Platz fürs Bild freihalten); PNG in passender Größe, ~0,7 s Verzögerung
@@ -607,7 +615,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1300;
     Object.defineProperty(v, "duration", { get: () => 1420 });
     Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
-    window.__jump = () => { pos = 1419.4; };
+    window.__jump = () => { pos = 1419.4; }; window.__onNext = () => { pos = 0; };
     return v.play(); });
   await page.waitForTimeout(800);
   const before = await page.evaluate("__next");
@@ -624,7 +632,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       v.dispatchEvent(new Event("seeking")); setTimeout(() => v.dispatchEvent(new Event("seeked")), 20); } });
     b.onclick = () => { __ab++; b.style.display = "none"; v.currentTime = 1380; }; // Abspann bis 23:00, danach 40 s Teaser
     setInterval(() => { if (run && pos >= 1380) pos += 0.25; }, 250);
-    window.__set = (x) => { pos = x; };
+    window.__set = (x) => { pos = x; }; window.__onNext = () => { pos = 0; };
     b.style.display = "block";
     return v.play(); }, mode); };
   await outroPage("run");
@@ -647,6 +655,22 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.waitForTimeout(5000);
   const stalled = await page.evaluate("[__ab, __next]");
   ok("Hänger nach Abspann-Sprung: erst anstoßen, dann nächste Folge", stillEarly === 0 && stalled[0] === 1 && stalled[1] === 1, `${stillEarly} / ${JSON.stringify(stalled)}`);
+  // Leiste versteckt, .click() wirkt nicht: Maus bewegen, Knopf drücken, 2. Versuch mit Mausereignissen
+  const endEp5 = async (flags) => { await page.goto(BASE + "/de/watch/EEE555/folge-5"); await page.evaluate((f) => { Object.assign(window, f); const v = document.getElementById("v");
+    Object.defineProperty(v, "duration", { get: () => 1420 }); Object.defineProperty(v, "currentTime", { get: () => 1420, set() {} });
+    v.dispatchEvent(new Event("ended")); }, flags); };
+  await endEp5({});
+  await page.waitForTimeout(4500);
+  const ep5 = await page.evaluate("[__moves > 0, __down, location.hash]");
+  ok("Nächste Folge: versteckte Leiste geweckt, 2. Versuch drückt mit Mausereignissen", ep5[0] && ep5[1] === 1 && ep5[2] === "#weiter", JSON.stringify(ep5));
+  // Knopf reagiert gar nicht: danach der Link „next“
+  await endEp5({ __dead: 1 });
+  await page.waitForTimeout(8000);
+  ok("Nächste Folge: Knopf wirkt nicht -> Link geöffnet", /\/watch\/BBB222\//.test(page.url()), page.url());
+  // kein Knopf: gleich der Link mit Kennzeichen „next“
+  await endEp5({ __noBtn: 1 });
+  await page.waitForTimeout(1500);
+  ok("Nächste Folge: ohne Knopf Link mit Kennzeichen „next“", /\/watch\/BBB222\//.test(page.url()), page.url());
   await page.goto(BASE + "/de/watch/AAA111/folge-1");
   await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
     v.dispatchEvent(new Event("ended")); });

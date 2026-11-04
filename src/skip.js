@@ -12,7 +12,9 @@
 // Nächste Folge (mit autoSkip, Nutzerwunsch): In der letzten Sekunde einer Folge (oder bei ended, Pause in der letzten
 // Sekunde, obigem Hänger) drückt BetterRoll sofort den Knopf „Nächste Folge“, wenn es einen gibt; sonst öffnet es den
 // Link „Nächste Folge“ unter dem Player. Nach der letzten Folge (weder Knopf noch Link) passiert nichts. Der
-// Player-Rahmen meldet das Ende per postMessage an die Seite, die die Adresse kennt.
+// Player-Rahmen meldet das Ende per postMessage an die Seite, die die Adresse kennt. Seit 31.10.2026: vorher die
+// Player-Leiste per Mausbewegung einblenden; bleibt die Folge 3 s später am Ende stehen, zweiter Versuch mit echten
+// Mausereignissen, dann der Link. Findet sich nichts, steht unter „Letzte Fehler“, welche Merkmale die Seite hat.
 // Abspann: wird wie Intro über den Knopf des Players übersprungen; was danach noch kommt (Teaser, Szene nach dem
 // Abspann), läuft ganz normal bis zur letzten Sekunde. Bleibt der Player nach dem Abspann-Sprung stehen (Zeit 2,5 s
 // still), wird er einmal angestoßen (minimal weiterspringen + abspielen); steht er weitere 3 s oder hält von selbst an
@@ -95,10 +97,49 @@
     watch(v);
     if (doneEp === episode) return;
     doneEp = episode;
-    const btn = nextButton();
-    if (btn) { note(`Ende bei ${mmss(v.currentTime)}/${mmss(v.duration)}: Knopf „Nächste Folge“ gedrückt`); return press(btn); }
-    if (window.top === window) return goNext();
-    try { window.top.postMessage({ crlfEnded: 1 }, "https://www.crunchyroll.com"); } catch (e) { /* fremde Seite */ }
+    advance(v, 0, `Ende bei ${mmss(v.currentTime)}/${mmss(v.duration)}`);
+  }
+  // Seit 31.10.2026 blendet der Player seine Leiste (mit „Nächste Folge“) nur bei Mausbewegung ein, und ein Klick wirkt
+  // nicht immer. Darum: Leiste wecken, Knopf drücken; ist nach 3 s noch dieselbe Folge am Ende, nochmal mit echten
+  // Mausereignissen, dann über den Link. Wer selbst eingreift (Maus/Taste), bekommt keinen weiteren Versuch.
+  const TRY_MS = 3000, WAKE_MS = 350;
+  function advance(v, n, why) {
+    const href = location.href, ep = episode, started = Date.now();
+    wake(v);
+    setTimeout(() => {
+      if (location.href !== href || episode !== ep || !on) return; // schon weiter
+      const pre = n ? `${n + 1}. Versuch` : why;
+      const btn = n < 2 ? nextButton() : null;
+      if (btn) { note(`${pre}: Knopf „Nächste Folge“ gedrückt (${desc(btn)})`); press(btn, n > 0); }
+      else if (window.top !== window) { try { window.top.postMessage({ crlfEnded: 1 }, "https://www.crunchyroll.com"); } catch (e) { /* fremde Seite */ } return; }
+      else {
+        const a = nextLink();
+        if (a) { note(`${pre}: Link „Nächste Folge“ geöffnet`); return location.assign(a); }
+        if (n >= 1) return note(`${pre}: kein Knopf und kein Link „Nächste Folge“ gefunden (${scan()})`);
+      }
+      setTimeout(() => {
+        if (location.href !== href || episode !== ep || userAt > started || !atEndNow(v)) return;
+        advance(v, n + 1, why);
+      }, TRY_MS);
+    }, WAKE_MS);
+  }
+  const atEndNow = (v) => v.isConnected && (v.ended || v.paused || v.duration - v.currentTime < 2);
+  // Player-Leiste einblenden: Maus über dem Video bewegen (wie ein Mensch)
+  function wake(v) {
+    const r = v.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true, composed: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.8 };
+    const el = document.elementFromPoint(at.clientX, at.clientY) || v;
+    for (const t of ["pointerover", "pointerenter", "pointermove", "mouseover", "mousemove"]) {
+      try { el.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, at)); } catch (e) { /* alter Browser */ }
+    }
+  }
+  const desc = (el) => (el.getAttribute("data-testid") || el.getAttribute("data-t") || label(el) || el.tagName.toLowerCase()).slice(0, 50);
+  // Zum Nachvollziehen, falls nichts passt: was gibt es auf der Seite an „next“-Elementen und Folgen-Links?
+  function scan() {
+    const ids = [...new Set([...document.querySelectorAll("[data-testid], [data-t]")]
+      .map((el) => el.getAttribute("data-testid") || el.getAttribute("data-t"))
+      .filter((x) => /next|up-?next|episode|nächste/i.test(x)))].slice(0, 6);
+    return `Merkmale: ${ids.join(", ") || "keine"}; Folgen-Links: ${document.querySelectorAll('a[href*="/watch/"]').length}`;
   }
   if (window.top === window) addEventListener("message", (e) => {
     if ((e.origin === "https://static.crunchyroll.com" || e.origin === location.origin) && e.data && e.data.crlfEnded) goNext();
@@ -106,11 +147,8 @@
   function goNext() {
     if (!on || !/\/watch\//.test(location.pathname) || planned === location.href) return;
     planned = location.href;
-    const btn = nextButton();
-    if (btn) { note("Seite: Knopf „Nächste Folge“ gedrückt"); return press(btn); }
-    const a = nextLink();
-    note(a ? "Seite: Link „Nächste Folge“ geöffnet" : "kein Knopf und kein Link „Nächste Folge“ gefunden");
-    if (a) location.assign(a);
+    const v = playing() || [...document.querySelectorAll("video")].find((x) => !own(x)) || document.body;
+    advance(v.tagName === "VIDEO" ? v : { getBoundingClientRect: () => document.body.getBoundingClientRect(), isConnected: true, ended: true }, 0, "Seite");
   }
   // Link zur nächsten Folge: Überschrift „Nächste Folge“ o. Ä., darüber der kleinste Kasten mit einem /watch/-Link zu
   // einer anderen Folge
@@ -118,6 +156,13 @@
     const cur = (location.pathname.match(/\/watch\/([A-Z0-9]+)/i) || [])[1] || "";
     const direct = document.querySelector('[data-t="next-episode"] a[href*="/watch/"]'); // Kasten „Nächste Episode“ unter dem Player
     if (direct) return direct.href;
+    // Link mit Kennzeichen „next“ (data-t, data-testid, aria-label, title) zu einer anderen Folge
+    for (const a of document.querySelectorAll('a[href*="/watch/"]')) {
+      const box = a.closest("[data-t], [data-testid]");
+      const tag = [a.getAttribute("data-t"), a.getAttribute("data-testid"), a.getAttribute("aria-label"), a.getAttribute("title"), box && (box.getAttribute("data-t") || box.getAttribute("data-testid"))].filter(Boolean).join(" ");
+      const id = (a.pathname.match(/\/watch\/([A-Z0-9]+)/i) || [])[1];
+      if (id && id.toUpperCase() !== cur.toUpperCase() && /next|up-?next|nächste/i.test(tag) && !/prev|vorherig/i.test(tag)) return a.href;
+    }
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => (n.nodeValue.length < 40 && NEXT_RE.test(n.nodeValue.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
     });
@@ -224,10 +269,10 @@
 
   // Klick auslösen. Der Treffer kann ein SVG o. Ä. ohne .click() sein (data-testid am Symbol): dann den umgebenden
   // Knopf nehmen bzw. die Mausereignisse selbst schicken, wie ein echter Klick sie liefert
-  function press(el) {
+  function press(el, real) {
     const btn = target(el);
-    if (typeof btn.click === "function") { btn.click(); return; }
+    if (!real && typeof btn.click === "function") { btn.click(); return; }
     const r = btn.getBoundingClientRect(), at = { bubbles: true, cancelable: true, composed: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-    for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) btn.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, at));
+    for (const t of ["pointerover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"]) btn.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, at));
   }
 })();
