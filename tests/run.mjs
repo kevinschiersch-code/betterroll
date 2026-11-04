@@ -239,11 +239,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Taste F: nur Favoriten", only.on && only.shown === 1, `${only.shown} sichtbar`);
   await page.keyboard.press("f"); await page.waitForTimeout(300);
   await page.keyboard.press("t"); await page.waitForTimeout(400);
-  if (!fs.readFileSync(path.join(SRC, "languages.js"), "utf8").includes("featureRank: false")) {
-    ok("Taste T öffnet Top 10", await page.evaluate(() => !!document.querySelector(".crlf-rpanel")));
-    await page.keyboard.press("t"); await page.waitForTimeout(400);
-    ok("Taste T schließt Top 10", await page.evaluate(() => !document.querySelector(".crlf-rpanel")));
-  } else ok("Taste T (öffentlich, ohne Top 10): öffnet nichts", await page.evaluate(() => !document.querySelector(".crlf-rpanel")));
+  ok("Taste T (Top 10 entfernt): öffnet nichts, kein 🏆/💬 zu sehen", await page.evaluate(() => !document.querySelector(".crlf-rpanel")
+    && [...document.querySelectorAll(".crlf-tool-rank, .crlf-btn-talk")].every((b) => b.offsetParent === null)));
 
   // Messung (diag): Zeiten der Durchläufe
   const stats = await page.evaluate(() => Object.fromEntries([...crlfDiagStats].map(([k, s]) => [k, { n: s.n, max: Math.round(s.max) }])));
@@ -595,7 +592,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   // öffentliche Linie: „Letzte Fehler“ und „Sicherung“ sind dort ausgeblendet
   const LITE = await page.evaluate(() => !!document.querySelector(".errs.backup[hidden]"));
   if (LITE) ok("Popup (öffentlich): Fehlerliste, Sicherung und Kommentare-Schalter ausgeblendet", await page.evaluate(() => [...document.querySelectorAll(".errs")].every((e) => e.offsetParent === null)
-    && document.getElementById("featureComments").hidden));
+    && !document.getElementById("featureComments")));
   else {
     const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
     ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));

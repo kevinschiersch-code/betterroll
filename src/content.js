@@ -15,6 +15,8 @@
 // Eigene Texte laufen über T() (i18n.js, Sprache = Einstellung „uiLang“); Muster für Texte der Seite bleiben zweisprachig.
 
 let settings = { ...CR_DEFAULT_SETTINGS };
+// seit 1.87.26 entfernt (Wunsch Enigma): Kommentare (💬), Top 10 und „Kopfbereich ausblenden“ – alte gespeicherte Werte gelten nicht mehr
+const CRLF_GONE = { featureComments: false, featureRank: false, hideTop: false };
 let marks = {}; // Basistitel -> "fav" (hervorgehoben) | "dim" (ausgegraut); in storage.local
 let hiddenCount = 0; // fürs Popup: „N Einträge ausgeblendet“
 let nextIndex = 0; // ursprüngliche Reihenfolge der Einträge (data-crlf-index)
@@ -778,13 +780,13 @@ function updateTools(releases) {
   if (col) addCls(col, "crlf-today");
 }
 
-// Tastenkürzel (Einstellung „hotkeys“): H = Heute, F = nur Favoriten, T = Top 10 – lösen die Knöpfe unten rechts aus.
+// Tastenkürzel (Einstellung „hotkeys“): H = Heute, F = nur Favoriten – lösen die Knöpfe unten rechts aus.
 // Nicht beim Tippen (Eingabefelder, 💬-Panel) und nicht mit Strg/Alt/Cmd (Browser-Kürzel wie Strg+F bleiben frei).
 addEventListener("keydown", (e) => {
   if (!settings.active || !settings.hotkeys || e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
   const t = e.target;
   if (t instanceof Element && (t.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']") || t.isContentEditable)) return;
-  const cls = { h: "crlf-tool-today", f: "crlf-tool-fav", t: "crlf-tool-rank" }[e.key.toLowerCase()];
+  const cls = { h: "crlf-tool-today", f: "crlf-tool-fav" }[e.key.toLowerCase()];
   const btn = cls && document.querySelector(`#crlf-tools .${cls}`);
   if (!btn || btn.hidden) return;
   e.preventDefault();
@@ -1007,7 +1009,7 @@ function fixCardsNow(mutations) {
 
 // Start: Einstellungen und Markierungen laden, filtern, danach Änderungen der Seite beobachten
 chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (stored) => {
-  settings = { ...CR_DEFAULT_SETTINGS, ...stored };
+  settings = { ...CR_DEFAULT_SETTINGS, ...stored, ...CRLF_GONE };
   crlfLang = settings.uiLang === "en" ? "en" : "de";
   chrome.storage.local.get({ marks: {} }, (local) => {
     marks = local.marks;
@@ -1033,6 +1035,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     const keys = Object.keys(changes).filter((k) => k in CR_DEFAULT_SETTINGS); // mk0… (Favoriten-Abgleich) ignorieren
     if (!keys.length) return;
     for (const key of keys) settings[key] = changes[key].newValue ?? CR_DEFAULT_SETTINGS[key]; // gelöscht: Standardwert
+    Object.assign(settings, CRLF_GONE);
   } else return;
   if (settingsReady) applyFilter();
 });
