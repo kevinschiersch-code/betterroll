@@ -3,7 +3,9 @@
 // Ohne Anmeldung: der anonyme Schlüssel aus crauth.js. Keine Cookies, kein Konto, nur Katalogdaten. Alle Serien des Kalenders gebündelt (je Abruf bis 40),
 // je Serie 30 Tage gemerkt (storage.local crDesc). Fehler/Ablehnung: 30 Min. Pause, dann gilt der alte Weg
 // (Beschreibung aus der Einblendung der Seite, sonst AniList).
-const CRLF_CAT_TTL = 30 * 864e5, CRLF_CAT_PAUSE = 30 * 60e3, CRLF_CAT_BATCH = 40;
+const CRLF_CAT_TTL = 30 * 864e5, CRLF_CAT_EMPTY_TTL = 864e5, CRLF_CAT_PAUSE = 30 * 60e3, CRLF_CAT_BATCH = 40;
+// leere Beschreibung (neue Serie, Text kommt bei Crunchyroll oft erst später) nur 1 Tag merken, dann neu fragen
+const crlfCatFresh = (e) => !!e && Date.now() - e.t < (e.d ? CRLF_CAT_TTL : CRLF_CAT_EMPTY_TTL);
 const crlfCat = new Map(); // Serien-ID -> { d: Beschreibung, t: Zeitpunkt }
 let crlfCatOn = false, crlfCatRun = null;
 
@@ -29,7 +31,7 @@ async function crlfCatFetch(ids) {
     for (const id of part) if (!crlfCat.has(id)) crlfCat.set(id, { d: "", t: Date.now() });
   }
   const store = {};
-  for (const [k, v] of crlfCat) if (Date.now() - v.t < CRLF_CAT_TTL) store[k] = v;
+  for (const [k, v] of crlfCat) if (crlfCatFresh(v)) store[k] = v;
   await chrome.storage.local.set({ crDesc: store });
 }
 
@@ -89,7 +91,7 @@ function crlfCatLoad() {
       const m = a.getAttribute("href").match(/\/series\/([A-Z0-9]+)/i);
       if (m) ids.add(m[1].toUpperCase());
     }
-    const missing = [...ids].filter((id) => { const e = crlfCat.get(id); return !e || Date.now() - e.t > CRLF_CAT_TTL; });
+    const missing = [...ids].filter((id) => !crlfCatFresh(crlfCat.get(id)));
     if (!missing.length) return;
     try { await crlfCatFetch(missing); }
     catch (e) {

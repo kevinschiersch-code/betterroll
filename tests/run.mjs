@@ -455,6 +455,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       ep("ED3X", 3, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
       ep("EF7", 7, now - 5 * H, "Anime F", "GF", "SFI", "it-IT", "Season 1 Part 3"),
       { ...ep("EE9", 9, now - 5 * H, "Anime E", "GE", "SE", "ja-JP", "Staffel 2"), _sn: 4 },
+      // Platzhalter bei Crunchyroll (Serie ohne Namen) wird weggelassen
+      ep("EP3", 3, now - 1 * H, "Staffel 1", "GT00393120", "SP", "ja-JP", "Staffel 1"),
     ];
     for (const e of ALL) if (e._sn) e.episode_metadata.season_number = e._sn;
     const J = (o) => new Response(JSON.stringify(o));
@@ -507,6 +509,17 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
     cards: document.querySelectorAll("article.release").length }));
   ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
+  ok("Eigener Kalender: Platzhalter-Serie ohne Namen weggelassen", !st.cards.some((c) => /^Staffel 1/.test(c.t)), JSON.stringify(st.cards.map((c) => c.t)));
+  // „↻ Neu laden“: ruft die laufende Woche neu ab, die Karten bleiben dabei stehen
+  const rl = await page.evaluate(async () => {
+    const before = window.__calls.length;
+    document.querySelector(".crlf-calreload").click();
+    const kept = document.querySelectorAll("article.release").length;
+    await new Promise((r) => setTimeout(r, 600));
+    return { kept, fetched: window.__calls.slice(before).filter((u) => u.startsWith("/content/v2/discover/browse")).length,
+      cards: document.querySelectorAll("article.release").length, stamp: document.querySelector(".crlf-calstamp").textContent };
+  });
+  ok("Eigener Kalender: „↻ Neu laden“ ruft neu ab, Karten bleiben stehen", rl.kept === st.cards.length && rl.fetched >= 1 && rl.cards === st.cards.length && /Stand/.test(rl.stamp), JSON.stringify(rl));
   // nächste Woche: geschätzte Folge von Anime B (7 + 1); die Vorschau zeigt die zuletzt erschienene Folge 7 mit Fortschritt
   if (inWeek(now - 4 * H)) {
     const nextMon = new Date(week0 + 7 * D + 12 * H), ymd = `${nextMon.getFullYear()}-${String(nextMon.getMonth() + 1).padStart(2, "0")}-${String(nextMon.getDate()).padStart(2, "0")}`;
@@ -790,14 +803,16 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     const log2 = await endLog();
     ok("Fahrtenschreiber läuft auf der neuen Seite weiter", ["Katalog: nächste Folge /de/watch/GGG777/folge-7", "Katalog-Adresse der nächsten Folge geöffnet", "Seite geladen: /watch/GGG777/folge-7", "andere Folge läuft: /watch/GGG777/folge-7"].every((x) => log2.includes(x)), log2.slice(-700));
   }
-  // neue Crunchyroll-Seite ohne Kennung im HTML: bekannte Kennung der Web-App (wie crauth.js)
-  const p2 = await browser.newPage();
-  p2.on("pageerror", (e) => errors.push(e.message));
-  await p2.goto(BASE + "/de/watch/FFF666/folge-6?noid");
-  const cat2 = await p2.evaluate(async () => [await crlfNextUrl("FFF666"), __api.slice()]);
-  ok("Katalog: ohne Kennung auf der Startseite mit der bekannten Kennung der Web-App", cat2[0] === BASE + "/de/watch/GGG777/folge-7"
-    && cat2[1].includes("/auth/v1/token Basic " + Buffer.from("cr_web:").toString("base64")), JSON.stringify(cat2));
-  await p2.close();
+  if (fs.existsSync(path.join(SRC, "crnext.js"))) { // nur private Fassung
+    // neue Crunchyroll-Seite ohne Kennung im HTML: bekannte Kennung der Web-App (wie crauth.js)
+    const p2 = await browser.newPage();
+    p2.on("pageerror", (e) => errors.push(e.message));
+    await p2.goto(BASE + "/de/watch/FFF666/folge-6?noid");
+    const cat2 = await p2.evaluate(async () => [await crlfNextUrl("FFF666"), __api.slice()]);
+    ok("Katalog: ohne Kennung auf der Startseite mit der bekannten Kennung der Web-App", cat2[0] === BASE + "/de/watch/GGG777/folge-7"
+      && cat2[1].includes("/auth/v1/token Basic " + Buffer.from("cr_web:").toString("base64")), JSON.stringify(cat2));
+    await p2.close();
+  }
   ok("End-Wächter/Katalog ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }

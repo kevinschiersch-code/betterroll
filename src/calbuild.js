@@ -53,6 +53,9 @@
     body.crlf-calbuild { margin: 0; background: #000; color: #dadada; font: 14px/1.4 "Lato", "Helvetica Neue", Arial, sans-serif; }
     .crlf-calbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; flex-wrap: wrap; max-width: 1378px; margin: 0 auto; }
     .crlf-calbar a { color: #f47521; text-decoration: none; }
+    /* Knopf statt Link „#“: calnav.js fängt Links auf die Kalender-Adresse ab, ein Klick tat sonst nichts */
+    .crlf-calbar button.crlf-calreload { all: unset; color: #f47521; cursor: pointer; }
+    .crlf-calbar button.crlf-calreload:hover, .crlf-calbar button.crlf-calreload:focus-visible { text-decoration: underline; }
     .crlf-calbar h1 { margin: 0 auto 0 0; font-size: 20px; color: #fff; }
     .crlf-calmsg { padding: 40px 24px; text-align: center; color: #aaa; }
     .crlf-calmsg button { margin-top: 12px; padding: 6px 14px; cursor: pointer; }
@@ -85,7 +88,7 @@
   document.head.append(css);
   const bar = el("header", { class: "crlf-calbar" },
     el("h1", {}, el("a", { href: path("") }, "Crunchyroll"), " · ", L.title),
-    el("span", { class: "crlf-calstamp" }), el("a", { href: "#", class: "crlf-calreload" }, L.reload),
+    el("span", { class: "crlf-calstamp" }), el("button", { type: "button", class: "crlf-calreload" }, L.reload),
     el("a", { href: shift(-7) }, L.prev), el("a", { href: shift(7) }, L.next));
   bar.querySelector(".crlf-calreload").addEventListener("click", (ev) => { ev.preventDefault(); run(true); });
   const msg = el("div", { class: "crlf-calmsg" }, L.load);
@@ -126,6 +129,8 @@
     if (isNaN(d)) return null;
     const audio = m.audio_locale || "ja-JP";
     const series = String(m.series_title || "").replace(/\s+/g, " ").trim(), st = String(m.season_title || "").replace(/\s+/g, " ").trim();
+    // Platzhalter bei Crunchyroll (Serie ohne Namen: „Staffel 1“ bzw. „T00393120“, Adresse t00393120): weglassen
+    if (/^t\d{5,}$/i.test(m.series_slug_title || "") || /^(?:T\d{5,}|(?:Staffel|Season|Saison|Temporada|Stagione)\s*\d+)?$/i.test(series)) return null;
     const gen = st.match(/^(?:Staffel|Season|Saison|Temporada|Stagione)\s*(\d+)$/i);
     const num = (gen && +gen[1]) || +m.season_display_number || m.season_number || m.season_sequence_number || 1;
     let title;
@@ -157,37 +162,23 @@
 
   // Wochen im Speicher (calWeeks3["de-DE|2026-11-02"] = { t, items }). Eine Woche, die beim Abruf noch lief, wird nach
   // 30 Min. neu abgerufen (mit „↻ Neu laden“ sofort), eine schon vorbei abgerufene nach 7 Tagen. Künftige Wochen: leer.
-  async function getWeeks(mons, force) {
-    const { calWeeks3: store = {} } = await chrome.storage.local.get("calWeeks3");
-    const loc = crlfCatLocale();
-    let changed = false;
-    const one = async (mon) => {
-      const now = Date.now();
-      if (mon.getTime() > now) return { t: now, items: [] };
-      const key = `${loc}|${ymd(mon)}`, w = store[key];
-      const live = !w || w.t < addDays(mon, 7).getTime() + 864e5; // beim Abruf noch nicht ganz vorbei (1 Tag für Nachzügler)
-      if (w && !(force && live) && now - w.t < (live ? CAL_LIVE_TTL : CAL_WEEK_TTL)) return w;
-      try {
-        store[key] = { t: Date.now(), items: await fetchWeek(mon) };
-        changed = true;
-        return store[key];
-      } catch (e) { if (w) return w; throw e; } // lieber der alte Stand als gar nichts
-    };
-    // erst die gezeigte Woche (holt den Schlüssel), dann die Vorwochen für die Schätzung gleichzeitig; die dürfen fehlen
-    const main = await one(mons[0]);
-    const rest = await Promise.all(mons.slice(1).map((m) => one(m).catch(() => ({ t: 0, items: [] }))));
-    if (changed) {
-      const keep = Object.keys(store).sort((a, b) => (a.split("|")[1] < b.split("|")[1] ? 1 : -1)).slice(0, CAL_WEEKS_KEPT);
-      for (const k of Object.keys(store)) if (!keep.includes(k)) delete store[k];
-      await chrome.storage.local.set({ calWeeks3: store }).catch(() => {});
-    }
-    return [main, ...rest];
-  }
+  // Der gemerkte Stand erscheint sofort (auch wenn er älter ist), Neues wird danach eingesetzt.
+  const keyOf = (mon) => `${crlfCatLocale()}|${ymd(mon)}`;
+  const stale = (mon, w, force) => {
+    if (mon.getTime() > Date.now()) return false;
+    if (!w) return true;
+    const live = w.t < addDays(mon, 7).getTime() + 864e5; // beim Abruf noch nicht ganz vorbei (1 Tag für Nachzügler)
+    return (force && live) || Date.now() - w.t >= (live ? CAL_LIVE_TTL : CAL_WEEK_TTL);
+  };
+  const saveWeeks = (store) => {
+    const keep = Object.keys(store).sort((a, b) => (a.split("|")[1] < b.split("|")[1] ? 1 : -1)).slice(0, CAL_WEEKS_KEPT);
+    for (const k of Object.keys(store)) if (!keep.includes(k)) delete store[k];
+    return chrome.storage.local.set({ calWeeks3: store }).catch(() => {});
+  };
 
   // Kalender der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte Folge einer Sprachfassung + 7 Tage,
   // höchstens 3 Wochen weit, nur wenn die letzte Folge höchstens 3 Wochen her ist)
-  async function loadWeek(force) {
-    const [main, ...base] = await getWeeks([start, addDays(start, -7), addDays(start, -14), addDays(start, -21)], force);
+  function build(main, base) {
     const now = Date.now();
     // mehrere Folgen einer Sprachfassung zur selben Zeit (z. B. Synchro-Staffel auf einmal): eine Karte „Folge 1–11“,
     // sie führt zur ersten Folge
@@ -219,13 +210,14 @@
         items.push({ id: "", n, d, sid: last.sid, slug2: last.slug2, title: last.title, img: last.img, soon: true, last });
       }
     }
-    return { items, t: Math.max(main.t, ...base.map((w) => w.t)) };
+    return { items, t: start.getTime() > now ? Math.max(0, ...base.map((w) => w.t)) : main.t };
   }
 
+  const fmtStamp = new Intl.DateTimeFormat(de ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const stamp = (t) => { bar.querySelector(".crlf-calstamp").textContent = `${L.stamp} ${fmtStamp.format(new Date(t))}`; };
   function render(items, t) {
     for (const old of document.querySelectorAll(".crlf-calweek")) old.remove();
-    const fmtStamp = new Intl.DateTimeFormat(de ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    bar.querySelector(".crlf-calstamp").textContent = `${L.stamp} ${fmtStamp.format(new Date(t))}`;
+    stamp(t);
     const week = el("div", { class: "crlf-calweek" });
     const fmtDay = new Intl.DateTimeFormat(de ? "de-DE" : "en-US", { weekday: "long", day: "2-digit", month: "2-digit" });
     const fmtTime = new Intl.DateTimeFormat(de ? "de-DE" : "en-US", { hour: "2-digit", minute: "2-digit" });
@@ -310,19 +302,55 @@
   new MutationObserver((muts) => { if (muts.some((m) => !(m.target.closest && m.target.closest(".crlf-nowline")))) schedNow(); })
     .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
 
+  // nur neu zeichnen, wenn sich etwas geändert hat (sonst nur den Stand), damit nichts unnötig springt
+  let shown = "";
+  function show(main, base) {
+    const w = build(main, base);
+    const sig = w.items.map((i) => `${i.id}|${i.d}|${i.n}|${i.n2}|${i.soon ? 1 : 0}|${i.title}`).sort().join("\n");
+    if (sig === shown && document.querySelector(".crlf-calweek")) { stamp(w.t); return; }
+    shown = sig;
+    render(w.items, w.t);
+  }
+
+  let running = false;
   async function run(force) {
-    msg.replaceChildren(L.load);
-    if (!msg.isConnected) document.body.append(msg);
+    if (running) return;
+    running = true;
+    force = force === true;
+    const now = Date.now(), none = { t: 0, items: [] };
+    const mons = [start, addDays(start, -7), addDays(start, -14), addDays(start, -21)];
     try {
       if (typeof crlfCatToken !== "function") throw new Error("crauth.js fehlt");
-      const w = await loadWeek(force === true);
-      render(w.items, w.t);
+      const { calWeeks3: store = {} } = await chrome.storage.local.get("calWeeks3");
+      const weeks = mons.map((m) => (m.getTime() > now ? { t: now, items: [] } : store[keyOf(m)] || null));
+      const showAll = () => show(weeks[0], weeks.slice(1).map((w) => w || none));
+      if (weeks[0]) showAll();
+      else { msg.replaceChildren(L.load); if (!msg.isConnected) document.body.append(msg); }
+      const todo = mons.map((m, i) => stale(m, weeks[i], force));
+      if (!todo.some(Boolean)) return;
+      bar.querySelector(".crlf-calstamp").textContent = L.load;
+      let changed = false;
+      const get = async (i) => {
+        if (!todo[i]) return;
+        weeks[i] = store[keyOf(mons[i])] = { t: Date.now(), items: await fetchWeek(mons[i]) };
+        changed = true;
+      };
+      // erst die gezeigte Woche (holt den Schlüssel), dann die Vorwochen für die Schätzung gleichzeitig; die dürfen fehlen
+      try { await get(0); } catch (e) {
+        if (!weeks[0]) throw e;
+        if (typeof crlfError === "function") crlfError("Kalender", e); // alter Stand bleibt stehen
+      }
+      showAll();
+      await Promise.all([1, 2, 3].map((i) => get(i).catch(() => {})));
+      showAll();
+      if (changed) await saveWeeks(store);
     } catch (e) {
       const retry = el("button", { type: "button" }, L.retry);
       retry.addEventListener("click", run);
       msg.replaceChildren(el("div", {}, `${L.err}: ${e.message || e}`), retry);
+      if (!msg.isConnected) document.body.append(msg);
       if (typeof crlfError === "function") crlfError("Kalender", e);
-    }
+    } finally { running = false; }
   }
   // crauth.js wird nach diesem Skript geladen: erst danach starten
   setTimeout(run, 0);
