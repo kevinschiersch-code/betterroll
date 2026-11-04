@@ -1,10 +1,11 @@
-// Eigener Simulcast-Kalender: Crunchyroll hat /simulcastcalendar abgeschaltet (Umleitung auf die Season-Übersicht).
-// Eine Regel (rules.json) leitet /…/simulcastcalendar?… vorher auf die kleine Datei /robots.txt?simulcastcalendar&p=…
-// um. Dieses Skript läuft dort als erstes, stellt die alte Adresse in der Leiste wieder her und baut die Wochenansicht
-// im Aufbau der alten Seite nach (section.day > ol.releases > li > article.release), damit alle übrigen Teile von
-// BetterRoll unverändert darauf arbeiten. Daten aus dem öffentlichen Katalog mit dem anonymen Schlüssel aus
-// crcatalog.js (keine Cookies, kein Konto). Künftige Folgen der Woche werden aus der letzten Folge + 7 Tage geschätzt.
-// Laufende Wochen werden alle 6 Std. nachgezogen, dabei nur Serien, bei denen laut Katalog (last_public) etwas Neues kam.
+// Eigener Release-Kalender: Crunchyroll hat /simulcastcalendar abgeschaltet und seit 31.10.2026 eine neue Seite
+// /releasecalendar (React, ohne BetterRoll-Funktionen, nur schon erschienene Folgen). Eine Regel (rules.json) leitet beide
+// Adressen vorher auf die kleine Datei /robots.txt?simulcastcalendar&p=… um. Dieses Skript läuft dort als erstes, stellt
+// die alte Adresse in der Leiste wieder her und baut die Wochenansicht im Aufbau der alten Seite nach
+// (section.day > ol.releases > li > article.release), damit alle übrigen Teile von BetterRoll unverändert darauf arbeiten.
+// Daten seit 1.87.20 wie die neue Seite von Crunchyroll: eine Abfrage je Woche (alle erschienenen Folgen), mit dem
+// anonymen Schlüssel aus crcatalog.js (keine Cookies, kein Konto). Kommende Folgen werden aus der letzten Folge + 7 Tage
+// geschätzt (dafür die drei Wochen davor, ebenfalls je eine Abfrage, gemerkt).
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
 
@@ -16,7 +17,7 @@
   const rest = q.toString();
   history.replaceState(null, "", `/${loc ? loc + "/" : ""}simulcastcalendar${rest ? "?" + rest : ""}`);
 
-  const CAL_SERIES_TTL = 7 * 864e5, CAL_EPS_TTL = 7 * 864e5, CAL_WEEK_TTL = 7 * 864e5, CAL_LIVE_TTL = 6 * 36e5, CAL_WEEKS_KEPT = 8, CAL_PAR = 8;
+  const CAL_WEEK_TTL = 7 * 864e5, CAL_LIVE_TTL = 30 * 60e3, CAL_WEEKS_KEPT = 10;
   const DUB = { "de-DE": "German", "en-US": "English", "es-419": "Spanish", "es-ES": "Castilian", "pt-BR": "Portuguese", "pt-PT": "Portuguese (Portugal)",
     "fr-FR": "French", "it-IT": "Italian", "ru-RU": "Russian", "ar-SA": "Arabic", "hi-IN": "Hindi", "ta-IN": "Tamil", "te-IN": "Telugu",
     "zh-CN": "Chinese", "zh-HK": "Chinese", "zh-TW": "Chinese", "ko-KR": "Korean", "th-TH": "Thai", "id-ID": "Indonesian", "ms-MY": "Malay",
@@ -103,164 +104,101 @@
       return res.json();
     }
   };
-  const pool = async (items, fn) => {
-    const out = new Array(items.length);
-    let i = 0;
-    await Promise.all(Array.from({ length: Math.min(CAL_PAR, items.length) }, async () => {
-      while (i < items.length) { const k = i++; try { out[k] = await fn(items[k]); } catch (e) { out[k] = null; } }
-    }));
-    return out;
-  };
-  const seasonTag = (d) => `${["winter", "spring", "summer", "fall"][Math.floor(d.getMonth() / 3)]}-${d.getFullYear()}`;
   const imgOf = (images, key, w) => {
     const sets = images && images[key];
     const list = Array.isArray(sets) ? (Array.isArray(sets[0]) ? sets[0] : sets) : [];
     const sorted = list.filter((x) => x && x.source).sort((a, b) => Math.abs(a.width - w) - Math.abs(b.width - w));
     return sorted.length ? sorted[0].source : "";
   };
-  const relDate = (e) => e.premium_available_date || e.availability_starts || e.episode_air_date || "";
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-  // Ganze Woche abrufen und lokal speichern (calWeeks[Montag] = { t, items }); danach kommt der Kalender ohne Abruf
-  // aus dem Speicher. Eine Woche, die beim Abruf noch lief, wird nach 6 Std. nachgezogen (neue Folgen, Serienstarts,
-  // neue Staffeln, Verschiebungen), eine schon vorbei abgerufene nach 7 Tagen; sofort mit „↻ Neu laden“.
-  const weekKey = ymd(start);
-  async function cachedWeek(force) {
-    const { calWeeks2: calWeeks = {} } = await chrome.storage.local.get("calWeeks2");
-    const w = calWeeks[weekKey];
-    if (!force && w && Date.now() - w.t < (w.t < end.getTime() + 864e5 ? CAL_LIVE_TTL : CAL_WEEK_TTL)) return w;
-    const items = await loadWeek(force);
-    calWeeks[weekKey] = { t: Date.now(), items };
-    for (const k of Object.keys(calWeeks).sort().slice(0, -CAL_WEEKS_KEPT)) delete calWeeks[k];
-    await chrome.storage.local.set({ calWeeks2: calWeeks }).catch(() => {});
-    return calWeeks[weekKey];
+  // Eintrag der Schnittstelle (eine Sprachfassung einer Folge) -> Karte. Titel im alten Format („X Staffel N“ nur, wenn
+  // die Staffel keinen eigenen Namen hat; Synchro mit Zusatz „(German Dub)“), weil ★/▼ daran hängen.
+  function toItem(e) {
+    const m = e && e.episode_metadata;
+    if (!m || !e.id || !m.series_id) return null;
+    const d = Date.parse(m.premium_available_date || m.availability_starts || "");
+    if (isNaN(d)) return null;
+    const audio = m.audio_locale || "ja-JP";
+    const num = +m.season_display_number || m.season_number || m.season_sequence_number || 1;
+    const st = m.season_title || "";
+    const own = st && !/^\s*(Staffel|Season|Saison|Temporada|Stagione)\s*\d+\s*$/i.test(st) ? st : "";
+    let title = own || `${m.series_title || ""} ${de ? "Staffel" : "Season"} ${num}`;
+    const tagged = typeof crDetectLanguage === "function" ? crDetectLanguage(title) !== null : /\)\s*$/.test(title);
+    if (audio !== "ja-JP" && DUB[audio] && !tagged) title += ` (${DUB[audio]} Dub)`;
+    return { id: e.id, n: m.episode_number != null ? m.episode_number : m.episode, slug: e.slug_title || "", d, img: imgOf(e.images, "thumbnail", 320),
+      sid: m.series_id, slug2: m.series_slug_title || "", title, sea: m.season_id || `${m.series_id}|${audio}|${num}` };
   }
 
-  async function loadWeek(force) {
-    const locale = crlfCatLocale();
-    const { calCache3: calCache = {} } = force ? {} : await chrome.storage.local.get("calCache3");
-    const cache = { series: calCache.series || {}, eps: calCache.eps || {} };
-    const now = Date.now();
+  // Eine Woche (Mo 00:00 bis Mo 00:00, Ortszeit) mit derselben Abfrage wie der Release-Kalender von Crunchyroll:
+  // alle in dieser Zeit erschienenen Folgen, je Sprachfassung ein Eintrag. Künftige Folgen liefert sie nicht.
+  async function fetchWeek(mon) {
+    const loc = crlfCatLocale(), from = mon.getTime(), to = addDays(mon, 7).getTime();
+    const seen = new Set(), items = [];
+    for (let off = 0, page = 0; page < 10; page++) {
+      const j = await api(`/content/v2/discover/browse?type=episode&sort_by=newly_added&ratings=true&n=100&start=${off}`
+        + `&from_date=${from}&to_date=${to}&preferred_audio_language=${loc}&locale=${loc}`);
+      const data = (j && j.data) || [];
+      for (const e of data) { const it = toItem(e); if (it && !seen.has(it.id)) { seen.add(it.id); items.push(it); } }
+      off += data.length;
+      if (!data.length || off >= ((j && j.total) || 0)) break;
+    }
+    return items;
+  }
 
-    // Serien der Season (Woche) und der drei Seasons davor (laufende Zwei- bis Vierteiler, Ganzjahresserien)
-    const tags = [...new Set([seasonTag(new Date(end - 1)), ...[0, 3, 6, 9].map((m) => seasonTag(new Date(start.getFullYear(), start.getMonth() - m, 1)))])];
-    const series = new Map(), lastPub = new Map();
-    let lastErr = null;
-    for (const tag of tags) {
-      const found = [];
+  // Wochen im Speicher (calWeeks3["de-DE|2026-11-02"] = { t, items }). Eine Woche, die beim Abruf noch lief, wird nach
+  // 30 Min. neu abgerufen (mit „↻ Neu laden“ sofort), eine schon vorbei abgerufene nach 7 Tagen. Künftige Wochen: leer.
+  async function getWeeks(mons, force) {
+    const { calWeeks3: store = {} } = await chrome.storage.local.get("calWeeks3");
+    const loc = crlfCatLocale();
+    let changed = false;
+    const one = async (mon) => {
+      const now = Date.now();
+      if (mon.getTime() > now) return { t: now, items: [] };
+      const key = `${loc}|${ymd(mon)}`, w = store[key];
+      const live = !w || w.t < addDays(mon, 7).getTime() + 864e5; // beim Abruf noch nicht ganz vorbei (1 Tag für Nachzügler)
+      if (w && !(force && live) && now - w.t < (live ? CAL_LIVE_TTL : CAL_WEEK_TTL)) return w;
       try {
-        // weiterblättern, bis eine Seite leer ist: die Schnittstelle liefert u. U. weniger als n je Seite
-        for (let off = 0, page = 0; off < 600 && page < 12; page++) {
-          const j = await api(`/content/v2/discover/browse?seasonal_tag=${tag}&n=100&start=${off}&locale=${locale}`);
-          const data = (j && j.data) || [];
-          found.push(...data);
-          off += data.length;
-          if (!data.length || (j.total && off >= j.total)) break;
-        }
-      } catch (e) { lastErr = e; }
-      for (const s of found) {
-        if (!s.id || series.has(s.id)) continue;
-        const last = Date.parse(s.last_public || (s.series_metadata && s.series_metadata.last_public) || "");
-        if (!isNaN(last) && last < start - 21 * 864e5) continue; // seit Wochen nichts Neues: beendet
-        series.set(s.id, s);
-        if (!isNaN(last)) lastPub.set(s.id, last);
-      }
+        store[key] = { t: Date.now(), items: await fetchWeek(mon) };
+        changed = true;
+        return store[key];
+      } catch (e) { if (w) return w; throw e; } // lieber der alte Stand als gar nichts
+    };
+    // erst die gezeigte Woche (holt den Schlüssel), dann die Vorwochen für die Schätzung gleichzeitig; die dürfen fehlen
+    const main = await one(mons[0]);
+    const rest = await Promise.all(mons.slice(1).map((m) => one(m).catch(() => ({ t: 0, items: [] }))));
+    if (changed) {
+      const keep = Object.keys(store).sort((a, b) => (a.split("|")[1] < b.split("|")[1] ? 1 : -1)).slice(0, CAL_WEEKS_KEPT);
+      for (const k of Object.keys(store)) if (!keep.includes(k)) delete store[k];
+      await chrome.storage.local.set({ calWeeks3: store }).catch(() => {});
     }
-    // Zwischenspeicher gilt, solange er jünger als ttl ist und die Serie seitdem nichts Neues bekam
-    const fresh = (c, sid, ttl) => !!c && now - c.t < ttl && !(lastPub.get(sid) > c.t);
+    return [main, ...rest];
+  }
 
-    if (!series.size && lastErr) throw lastErr;
-
-    // je Serie die neueste Staffel jeder Sprachfassung
-    const sids = [...series.keys()];
-    await pool(sids, async (sid) => {
-      if (fresh(cache.series[sid], sid, CAL_SERIES_TTL)) return;
-      const j = await api(`/content/v2/cms/series/${sid}/seasons?locale=${locale}`);
-      const best = new Map(), all = [];
-      for (const s of (j && j.data) || []) {
-        const n = s.season_sequence_number || s.season_number || 0;
-        // Synchronfassungen stecken als eigene Staffel-IDs in versions[]
-        const vers = Array.isArray(s.versions) && s.versions.length ? s.versions : [{ audio_locale: s.audio_locale, guid: s.id }];
-        for (const v of vers) {
-          const audio = v.audio_locale || "ja-JP", id = v.guid || v.season_guid || s.id;
-          const x = { id, title: s.title || "", audio, n, num: +s.season_display_number || s.season_number || n, count: s.number_of_episodes || 0 };
-          all.push(x);
-          const o = best.get(audio);
-          if (!o || n > o.n) best.set(audio, x);
-        }
-      }
-      // übrige Staffeln (neueste zuerst) für den Fall, dass die neueste nur angekündigt ist und die laufende davor liegt
-      const chosen = new Set([...best.values()].map((x) => x.id));
-      const alt = all.filter((x) => !chosen.has(x.id)).sort((a, b) => b.n - a.n).slice(0, 6);
-      cache.series[sid] = { t: now, seasons: [...best.values()], alt };
-    });
-
-    // Folgen dieser Staffeln (nur die letzten 60 Tage werden gemerkt)
-    let seasons = sids.flatMap((sid) => ((cache.series[sid] && cache.series[sid].seasons) || []).map((s) => ({ ...s, sid })));
-    const loadEps = (list) => pool(list, async (s) => {
-      if (fresh(cache.eps[s.id], s.sid, CAL_EPS_TTL) && !(start < now - 60 * 864e5)) return;
-      const j = await api(`/content/v2/cms/seasons/${s.id}/episodes?locale=${locale}`);
-      const list = [];
-      for (const e of (j && j.data) || []) {
-        const d = Date.parse(relDate(e));
-        if (isNaN(d) || d > now + 30 * 864e5) continue; // Platzhalter wie 9998-11-30 = noch nicht angekündigt
-        list.push({ id: e.id, n: e.episode_number != null ? e.episode_number : e.episode, slug: e.slug_title || "", d, img: imgOf(e.images, "thumbnail", 320),
-          sslug: e.series_slug_title || "", title: e.season_title || "" });
-      }
-      cache.eps[s.id] = { t: now, list: start < now - 60 * 864e5 ? list : list.filter((x) => x.d > now - 60 * 864e5) };
-    });
-    await loadEps(seasons);
-
-    // Serie hat laut Katalog Neues, die gewählten Staffeln aber nicht (neueste Staffel erst angekündigt, Zählung der
-    // Staffeln schief): die übrigen Staffeln ansehen und die mit Folgen der letzten 3 Wochen dazunehmen
-    const newest = (id) => Math.max(0, ...((cache.eps[id] && cache.eps[id].list) || []).map((e) => e.d));
-    const lag = sids.filter((sid) => {
-      const c = cache.series[sid], lp = lastPub.get(sid);
-      if (!c || !(c.alt || []).length || !(lp > now - 21 * 864e5) || c.altFor === lp) return false;
-      return Math.max(0, ...c.seasons.map((s) => newest(s.id))) < lp - 36 * 36e5;
-    });
-    if (lag.length) {
-      const extra = lag.flatMap((sid) => cache.series[sid].alt.map((s) => ({ ...s, sid })));
-      await loadEps(extra);
-      for (const sid of lag) {
-        const c = cache.series[sid], add = c.alt.filter((s) => newest(s.id) > now - 21 * 864e5);
-        c.seasons = [...c.seasons, ...add];
-        c.alt = c.alt.filter((s) => !add.includes(s));
-        c.altFor = lastPub.get(sid);
-      }
-      seasons = sids.flatMap((sid) => ((cache.series[sid] && cache.series[sid].seasons) || []).map((s) => ({ ...s, sid })));
+  // Kalender der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte Folge einer Sprachfassung + 7 Tage,
+  // höchstens 3 Wochen weit, nur wenn die letzte Folge höchstens 3 Wochen her ist)
+  async function loadWeek(force) {
+    const [main, ...base] = await getWeeks([start, addDays(start, -7), addDays(start, -14), addDays(start, -21)], force);
+    const now = Date.now(), items = main.items.slice();
+    const bySea = new Map();
+    for (const it of [...base.flatMap((w) => w.items), ...main.items]) {
+      if (it.d > now) continue;
+      let g = bySea.get(it.sea);
+      if (!g) bySea.set(it.sea, (g = { last: null, known: new Set() }));
+      g.known.add(+it.n);
+      if (!g.last || it.d > g.last.d || (it.d === g.last.d && +it.n > +g.last.n)) g.last = it;
     }
-
-    // aufräumen: nur Einträge der aktuellen Serien/Staffeln behalten
-    const keepS = new Set(seasons.map((s) => s.id)), keepSer = new Set(sids);
-    for (const k of Object.keys(cache.eps)) if (!keepS.has(k)) delete cache.eps[k];
-    for (const k of Object.keys(cache.series)) if (!keepSer.has(k)) delete cache.series[k];
-    chrome.storage.local.set({ calCache3: cache }).catch(() => {});
-
-    // Einträge der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte + 7 Tage)
-    const items = [];
-    for (const s of seasons) {
-      const ser = series.get(s.sid) || {};
-      const eps = ((cache.eps[s.id] && cache.eps[s.id].list) || []).slice().sort((a, b) => a.d - b.d);
-      // „Staffel 1“ allein sagt nichts: dann Serientitel (+ Staffel ab 2)
-      const own = s.title && !/^\s*(Staffel|Season|Saison|Temporada|Stagione)\s*\d+\s*$/i.test(s.title) ? s.title : "";
-      let title = own || `${ser.title || (eps[0] && eps[0].title) || ""} ${de ? "Staffel" : "Season"} ${s.num || 1}`; // wie im alten Kalender (auch „Staffel 1“): Schlüssel der ★/▼-Markierungen
-      const tagged = typeof crDetectLanguage === "function" ? crDetectLanguage(title) !== null : /\)\s*$/.test(title);
-      if (s.audio !== "ja-JP" && DUB[s.audio] && !tagged) title += ` (${DUB[s.audio]} Dub)`;
-      const slug = (eps[0] && eps[0].sslug) || ser.slug_title || "";
-      const poster = imgOf(ser.images, "poster_wide", 320);
-      for (const e of eps) if (e.d >= start && e.d < end) items.push({ ...e, sid: s.sid, slug2: slug, title, img: e.img || poster });
-      const out = eps.filter((e) => e.d <= now), last = out[out.length - 1];
-      const known = new Set(eps.map((e) => +e.n));
+    for (const { last, known } of bySea.values()) {
       if (!last || last.d < now - 21 * 864e5 || !isFinite(+last.n)) continue;
       for (let k = 1; k <= 3; k++) {
         const d = last.d + k * 7 * 864e5, n = +last.n + k;
         if (known.has(n)) continue;
         if (d <= now || d < start) continue;
         if (d >= end) break;
-        items.push({ id: "", n, d, sid: s.sid, slug2: slug, title, img: last.img || poster, soon: true, last });
+        items.push({ id: "", n, d, sid: last.sid, slug2: last.slug2, title: last.title, img: last.img, soon: true, last });
       }
     }
-    return items;
+    return { items, t: Math.max(main.t, ...base.map((w) => w.t)) };
   }
 
   function render(items, t) {
@@ -356,7 +294,7 @@
     if (!msg.isConnected) document.body.append(msg);
     try {
       if (typeof crlfCatToken !== "function") throw new Error("crcatalog.js fehlt");
-      const w = await cachedWeek(force === true);
+      const w = await loadWeek(force === true);
       render(w.items, w.t);
     } catch (e) {
       const retry = el("button", { type: "button" }, L.retry);

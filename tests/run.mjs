@@ -413,29 +413,34 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const MOCK = `(() => {
     window.__calls = [];
     const now = ${now}, H = ${H}, D = ${D}, iso = (t) => new Date(t).toISOString();
-    const ep = (id, n, t, season) => ({ id, episode_number: n, slug_title: "folge-" + n, premium_available_date: iso(t), season_title: season, series_slug_title: "anime-a",
-      images: { thumbnail: [[{ source: "/slow/thumb.png", width: 320, height: 180 }]] } });
+    // Einträge wie /content/v2/discover/browse?type=episode (je Sprachfassung einer Folge einer)
+    const ep = (id, n, t, series, sid, sea, audio, seasonTitle) => ({ id, slug_title: "folge-" + n, type: "episode",
+      images: { thumbnail: [[{ source: "/slow/thumb.png", width: 320, height: 180 }]] },
+      episode_metadata: { series_id: sid, series_title: series, series_slug_title: series.toLowerCase().replace(/ /g, "-"), season_id: sea,
+        season_title: seasonTitle, season_number: 1, season_display_number: "1", episode_number: n, premium_available_date: iso(t), audio_locale: audio } });
+    const ALL = [
+      ep("EJ3", 3, now - 6.5 * D, "Anime A", "GA", "SJ", "ja-JP", "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A", "GA", "SJ", "ja-JP", "Anime A"),
+      ep("ED3", 3, now - 3 * H, "Anime A", "GA", "SD", "de-DE", "Anime A"),
+      ep("EB7", 7, now - 4 * H, "Anime B", "GB", "SB1", "ja-JP", "Season 1"),
+      // Anime C: letzte Folge vor einer Woche (+2 Std.) -> diese Woche geschätzt
+      ep("EC5", 5, now - 7 * D + 2 * H, "Anime C", "GC", "SC", "ja-JP", "Anime C"),
+    ];
     const J = (o) => new Response(JSON.stringify(o));
     window.fetch = async (url) => {
       url = String(url); window.__calls.push(url);
       if (url === "/" || url === "/de/") return new Response('<script>x={anonClientId:"anon-id",anonClientSecret:""}</script>');
       if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
-      if (url.startsWith("/content/v2/discover/browse")) return J({ data: url.includes("seasonal_tag=") && !window.__browsed++ ? [{ id: "GA", title: "Anime A", slug_title: "anime-a", last_public: iso(now - H) },
-        { id: "GB", title: "Anime B", slug_title: "anime-b", last_public: iso(now - 4 * H) }] : [] });
-      if (url.startsWith("/content/v2/cms/series/GA/seasons")) return J({ data: [{ id: "SJ", title: "Anime A", season_number: 1, season_sequence_number: 1,
-        versions: [{ audio_locale: "ja-JP", guid: "SJ" }, { audio_locale: "de-DE", guid: "SD" }] }] });
-      if (url.startsWith("/content/v2/cms/seasons/SJ/episodes")) return J({ data: [ep("EJ3", 3, now - 6.5 * D, "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A")] });
-      if (url.startsWith("/content/v2/cms/seasons/SD/episodes")) return J({ data: [ep("ED3", 3, now - 3 * H, "Anime A")] });
-      // Anime B: Staffel 2 nur angekündigt (Platzhalter-Datum), es läuft noch Staffel 1
-      if (url.startsWith("/content/v2/cms/series/GB/seasons")) return J({ data: [
-        { id: "SB2", title: "Anime B Staffel 2", season_number: 2, season_sequence_number: 2, versions: [{ audio_locale: "ja-JP", guid: "SB2" }] },
-        { id: "SB1", title: "Anime B", season_number: 1, season_sequence_number: 1, versions: [{ audio_locale: "ja-JP", guid: "SB1" }] }] });
-      if (url.startsWith("/content/v2/cms/seasons/SB2/episodes")) return J({ data: [ep("EB2X", 1, Date.parse("9998-11-30T00:00:00Z"), "Anime B Staffel 2")] });
-      if (url.startsWith("/content/v2/cms/seasons/SB1/episodes")) return J({ data: [ep("EB7", 7, now - 4 * H, "Anime B")] });
+      if (url.startsWith("/content/v2/discover/browse")) {
+        const q = new URLSearchParams(url.split("?")[1]);
+        if (q.get("type") !== "episode" || !q.get("from_date") || !q.get("to_date")) return J({ data: [], total: 0 });
+        const from = +q.get("from_date"), to = +q.get("to_date"), off = +q.get("start") || 0;
+        const hits = ALL.filter((e) => { const t = Date.parse(e.episode_metadata.premium_available_date); return t >= from && t < to && t <= now; })
+          .sort((x, y) => Date.parse(y.episode_metadata.premium_available_date) - Date.parse(x.episode_metadata.premium_available_date));
+        return J({ data: hits.slice(off, off + 2), total: hits.length }); // nur 2 je Seite: Weiterblättern prüfen
+      }
       if (url.startsWith("/content/v2/cms/objects/")) return J({ data: [] });
       return new Response("", { status: 404 });
     };
-    window.__browsed = 0;
   })();`;
   // Content-Scripts bei document_start sehen schon <html>; Init-Skripte von Playwright laufen davor: kurz darauf warten
   const code = JSON.stringify(files.map((f) => fs.readFileSync(path.join(SRC, f), "utf8")).join("\n;\n"));
@@ -456,13 +461,14 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const inWeek = (t) => t >= week0 && t < week0 + 7 * D;
   const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H].filter(inWeek).length;
   ok("Eigener Kalender: alte Adresse, 7 Tage, kein robots-Text", st.path === "/de/simulcastcalendar" && st.days === 7 && st.pre === 0, JSON.stringify({ path: st.path, days: st.days, pre: st.pre, msg: st.msg }));
-  ok("Eigener Kalender: Folgen aus dem Katalog, Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
+  ok("Eigener Kalender: Folgen der Woche (eine Abfrage je Woche, Weiterblättern), Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
     && (!inWeek(now - 3 * H) || st.cards.some((c) => c.t === "Anime A (German Dub)")) && st.cards.filter((c) => !c.soon).every((c) => /\/de\/watch\/E/.test(c.link)), JSON.stringify(st.cards));
-  ok("Eigener Kalender: laufende Staffel trotz angekündigter neuer Staffel", !inWeek(now - 4 * H) || st.cards.some((c) => /Anime B/.test(c.t) && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: Staffel ohne eigenen Namen heißt „Serie Staffel N“", !inWeek(now - 4 * H) || st.cards.some((c) => c.t === "Anime B Staffel 1" && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
   await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
-  const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover") || u.includes("/cms/series") || u.includes("/cms/seasons")).length,
+  const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
     cards: document.querySelectorAll("article.release").length }));
   ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
   // nächste Woche: geschätzte Folge von Anime B (7 + 1); die Vorschau zeigt die zuletzt erschienene Folge 7 mit Fortschritt

@@ -222,7 +222,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   // Speicher früherer Versionen löschen: „Fehler melden“ (bis 1.82), alte Poster (Crunchyroll-Bilder), erste Fassung
   // des eigenen Kalenders
   chrome.storage.local.remove(["crReportDraft", "crReportTimes", "crReportHashes", "crInstallId", "crClosedOverlays", "crOverlaySeen", "crSkipLog", "crPlayerDiag",
-    "crPosters", "crPosters2", "crPosters3", "calCache", "calCache2", "calWeeks"]).catch(() => {});
+    "crPosters", "crPosters2", "crPosters3", "calCache", "calCache2", "calWeeks", "calCache3", "calWeeks2"]).catch(() => {});
   if (reason !== "install") return;
   try {
     const res = await fetch(chrome.runtime.getURL("lang.json"), { cache: "no-store" });
