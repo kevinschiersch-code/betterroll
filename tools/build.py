@@ -54,14 +54,18 @@ def firefox_manifest(m: dict) -> dict:
     return m
 
 
+PRIVATE_JS = ("crcatalog.js", "crnext.js")  # nutzen die Crunchyroll-Schnittstelle: nur private Fassung
+
+
 def store_variant(folder: Path, firefox: bool):
     """Store-Fassung: ohne eigenen Updater (Store aktualisiert selbst), ohne nativeMessaging-Berechtigung, Firefox ohne update_url."""
     bg = folder / "background.js"
     s = bg.read_text(encoding="utf-8")
     a, b = s.index("// @updater-begin"), s.index("// @updater-end")
     bg.write_text(s[:a] + s[b + len("// @updater-end"):].lstrip("\n"), encoding="utf-8")
-    # Crunchyroll-Katalog (crcatalog.js) nur in der privaten Fassung: Datei, Eintrag und Schalter im Popup entfernen
-    (folder / "crcatalog.js").unlink(missing_ok=True)
+    # Crunchyroll-Katalog (crcatalog.js, crnext.js) nur in der privaten Fassung: Dateien, Einträge und Schalter im Popup entfernen
+    for f in PRIVATE_JS:
+        (folder / f).unlink(missing_ok=True)
     for f in (folder / "icons").glob("*-upd.png"):  # Update-Hinweis am Symbol gibt es nur mit Updater
         f.unlink()
     ph = folder / "popup.html"
@@ -72,7 +76,8 @@ def store_variant(folder: Path, firefox: bool):
     mf = folder / "manifest.json"
     m = json.loads(mf.read_text(encoding="utf-8"))
     for cs in m.get("content_scripts", []):
-        cs["js"] = [j for j in cs.get("js", []) if j != "crcatalog.js"]
+        cs["js"] = [j for j in cs.get("js", []) if j not in PRIVATE_JS]
+    m["content_scripts"] = [cs for cs in m.get("content_scripts", []) if cs.get("js") or cs.get("css")]
     m["permissions"] = [p for p in m.get("permissions", []) if p not in ("alarms", "nativeMessaging")]
     if firefox:
         m["browser_specific_settings"]["gecko"].pop("update_url", None)
