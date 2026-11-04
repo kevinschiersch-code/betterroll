@@ -11,7 +11,8 @@ import http from "http";
 import { fileURLToPath } from "url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = path.join(ROOT, "src");
+// BR_SRC=<Ordner> prüft stattdessen ein gebautes Paket (z. B. die öffentliche Linie aus build.py --public)
+const SRC = process.env.BR_SRC ? path.resolve(process.env.BR_SRC) : path.join(ROOT, "src");
 const results = [];
 const ok = (name, cond, info = "") => { results.push({ name, ok: !!cond, info }); };
 
@@ -94,6 +95,27 @@ const pages = { "/calendar.html": calendarHtml, "/video.html": () => `<!doctype 
   pc.addEventListener("mousemove", () => { __moves++; if (!bar.firstChild && !window.__noBtn) bar.innerHTML = '<button data-testid="next-episode-button" style="width:40px;height:40px">⏭</button>'; });
   bar.addEventListener("pointerdown", () => { __down++; if (!window.__dead) location.hash = "weiter"; });</script>
   <script src="/src/skip.js"></script></body></html>`,
+  // Katalog-Weg (crnext.js): weder Knopf noch Link; Antworten des Katalogs im Test nachgestellt
+  "/de/watch/FFF666/folge-6": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script><script>
+  window.__api = [];
+  window.fetch = async (url, opt = {}) => {
+    url = String(url); window.__api.push(url.split("?")[0] + " " + ((opt.headers && opt.headers.Authorization) || ""));
+    const J = (o) => new Response(JSON.stringify(o));
+    if (url === "/de/") return new Response('<script>window.__CFG__ = {"anonClientId":"tid","anonClientSecret":""}<' + '/script>');
+    if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
+    const ep = url.match(new RegExp("cms.objects.([A-Z0-9]+)"));
+    if (ep) return J({ data: [{ id: ep[1], episode_metadata: { season_id: "S6" } }] });
+    if (url.startsWith("/content/v2/cms/seasons/S6/episodes")) return J({ data: [
+      { id: "HHH888", sequence_number: 8, availability_starts: "2020-01-03T00:00:00Z" },
+      { id: "FFF666", sequence_number: 6, availability_starts: "2020-01-01T00:00:00Z" },
+      { id: "GGG777", sequence_number: 7, slug_title: "folge-7", availability_starts: "2020-01-02T00:00:00Z" },
+      { id: "III999", sequence_number: 9, availability_starts: "9998-11-30T00:00:00Z" }] });
+    return new Response("", { status: 404 });
+  };</script></head><body><video id="v" src="/src/backgrounds/haus_1.webm" muted width="320" height="180"></video>
+  <script src="/src/crnext.js"></script><script src="/src/skip.js"></script></body></html>`,
+  "/de/watch/GGG777/folge-7": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
+  <video id="v" src="/src/backgrounds/haus_1.webm" muted autoplay loop width="320" height="180"></video>
+  <script src="/src/skip.js"></script></body></html>`,
   "/de/watch/BBB222/folge-2": () => "<!doctype html><title>Folge 2</title>",
   "/de/watch/CCC333/folge-3": () => `<!doctype html><html><head><meta charset="utf-8"><script>${STUB}</script></head><body>
   <video id="v" src="/src/backgrounds/haus_1.webm" muted loop width="320" height="180"></video>
@@ -117,7 +139,7 @@ const server = http.createServer((req, res) => {
   if (SLOW[url]) return setTimeout(() => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(SLOW[url]); }, 700);
   if (url === "/robots.txt") { res.writeHead(200, { "Content-Type": "text/plain" }); return res.end("User-agent: *\nDisallow: /x\n"); }
   if (pages[url]) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(pages[url]()); }
-  const file = path.join(ROOT, url);
+  const file = url.startsWith("/src/") ? path.join(SRC, url.slice(5)) : path.join(ROOT, url);
   if (!file.startsWith(SRC) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
@@ -334,56 +356,60 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   });
   ok("Vorschau aus der Karte: Staffel aus dem Originaltitel", fromCard.season >= 2 && !/Staffel/.test(fromCard.name || "Staffel"), JSON.stringify(fromCard));
 
-  // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
-  const cat = await page.evaluate(async () => {
-    const calls = [], real = window.fetch;
-    window.fetch = async (url, o = {}) => {
-      calls.push({ url: String(url), cred: o.credentials, method: o.method || "GET" });
-      if (/^\/(?:de\/)?$/.test(url)) return new Response(`<script>window.__APP_CONFIG__={cxApiParams:{anonClientId:"anon-id",anonClientSecret:""}}</script>`);
-      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
-      if (String(url).startsWith("/content/v2/cms/objects/")) {
-        const ids = String(url).split("/").pop().split("?")[0].split(",");
-        return new Response(JSON.stringify({ data: ids.map((id) => ({ id, type: "series", description: `Deutsche Beschreibung für ${id} aus dem Katalog.` })) }));
-      }
-      return real(url, o);
-    };
-    await chrome.storage.local.remove("crCatPause");
-    await chrome.storage.local.remove("crCatCfg");
-    await crlfCatLoad();
-    window.fetch = real;
-    return { calls, desc: crlfCatDesc("G0X4") };
-  });
-  ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
-    && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
-  // Crunchyroll-Sterne über die Bewertungs-Schnittstelle: ohne Cookies, v3 abgelehnt -> v2, Weg gemerkt, Anzeige
-  const rate = await page.evaluate(async () => {
-    const calls = [], real = window.fetch;
-    window.fetch = async (url, o = {}) => {
-      calls.push({ url: String(url), cred: o.credentials });
-      if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
-      if (String(url).startsWith("/content-reviews/v3/")) return new Response("", { status: 404 });
-      if (String(url).startsWith("/content-reviews/v2/")) return new Response(JSON.stringify({ "5s": { displayed: "9.8", unit: "K" }, "4s": { displayed: "1.2", unit: "K" }, average: "4.8", total: 11000 }));
-      return real(url, o);
-    };
-    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
-    const a = await crlfCatRating("G0X5");
-    const { crRatePath } = await chrome.storage.local.get("crRatePath");
-    const box = crlfRatingBox("Anime 9-9", "/de/series/G9X9/anime-9-9");
-    await new Promise((r) => setTimeout(r, 300));
-    const shown = box.querySelector(".crlf-pop-rrow").textContent;
-    // alles abgelehnt: kein Wert, 1 Tag Pause, danach keine weiteren Abrufe
-    window.fetch = async (url, o = {}) => { calls.push({ url: String(url), cred: o.credentials });
-      return url === "/auth/v1/token" ? new Response(JSON.stringify({ access_token: "tok", expires_in: 300 })) : new Response("", { status: 403 }); };
-    await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
-    const b = await crlfCatRating("G0X7");
-    const n = calls.length, c = await crlfCatRating("G0X8");
-    const { crRatePause = 0 } = await chrome.storage.local.get("crRatePause");
-    window.fetch = real;
-    return { a, crRatePath, shown, b, c, paused: crRatePause > Date.now(), again: calls.length - n, omit: calls.every((x) => x.cred === "omit") };
-  });
-  ok("Bewertung: Sterne ohne Anmeldung aus dem Katalog", rate.omit && rate.a && rate.a.value === 4.8 && rate.a.count === 11000
-    && rate.crRatePath === "/content-reviews/v2/rating/series/" && /4[,.]8/.test(rate.shown), JSON.stringify(rate));
-  ok("Bewertung: abgelehnt -> Pause, alter Weg", rate.b === null && rate.c === null && rate.paused && rate.again === 0, JSON.stringify(rate));
+  // Crunchyroll-Katalog gibt es nur in der privaten Fassung (öffentliche Linie ohne crcatalog.js)
+  const HAS_CAT = fs.existsSync(path.join(SRC, "crcatalog.js"));
+  if (HAS_CAT) {
+    // Crunchyroll-Katalog (private Fassung): anonymer Schlüssel ohne Cookies, Beschreibungen gebündelt, Vorschau nutzt sie
+    const cat = await page.evaluate(async () => {
+      const calls = [], real = window.fetch;
+      window.fetch = async (url, o = {}) => {
+        calls.push({ url: String(url), cred: o.credentials, method: o.method || "GET" });
+        if (/^\/(?:de\/)?$/.test(url)) return new Response(`<script>window.__APP_CONFIG__={cxApiParams:{anonClientId:"anon-id",anonClientSecret:""}}</script>`);
+        if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+        if (String(url).startsWith("/content/v2/cms/objects/")) {
+          const ids = String(url).split("/").pop().split("?")[0].split(",");
+          return new Response(JSON.stringify({ data: ids.map((id) => ({ id, type: "series", description: `Deutsche Beschreibung für ${id} aus dem Katalog.` })) }));
+        }
+        return real(url, o);
+      };
+      await chrome.storage.local.remove("crCatPause");
+      await chrome.storage.local.remove("crCatCfg");
+      await crlfCatLoad();
+      window.fetch = real;
+      return { calls, desc: crlfCatDesc("G0X4") };
+    });
+    ok("Katalog: ohne Cookies, gebündelt, Beschreibung da", cat.calls.length >= 3 && cat.calls.every((c) => c.cred === "omit")
+      && cat.calls.filter((c) => c.url.startsWith("/content/")).length === 2 && /G0X4/.test(cat.desc), `${cat.calls.length} Abrufe`);
+    // Crunchyroll-Sterne über die Bewertungs-Schnittstelle: ohne Cookies, v3 abgelehnt -> v2, Weg gemerkt, Anzeige
+    const rate = await page.evaluate(async () => {
+      const calls = [], real = window.fetch;
+      window.fetch = async (url, o = {}) => {
+        calls.push({ url: String(url), cred: o.credentials });
+        if (url === "/auth/v1/token") return new Response(JSON.stringify({ access_token: "tok", expires_in: 300 }));
+        if (String(url).startsWith("/content-reviews/v3/")) return new Response("", { status: 404 });
+        if (String(url).startsWith("/content-reviews/v2/")) return new Response(JSON.stringify({ "5s": { displayed: "9.8", unit: "K" }, "4s": { displayed: "1.2", unit: "K" }, average: "4.8", total: 11000 }));
+        return real(url, o);
+      };
+      await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+      const a = await crlfCatRating("G0X5");
+      const { crRatePath } = await chrome.storage.local.get("crRatePath");
+      const box = crlfRatingBox("Anime 9-9", "/de/series/G9X9/anime-9-9");
+      await new Promise((r) => setTimeout(r, 300));
+      const shown = box.querySelector(".crlf-pop-rrow").textContent;
+      // alles abgelehnt: kein Wert, 1 Tag Pause, danach keine weiteren Abrufe
+      window.fetch = async (url, o = {}) => { calls.push({ url: String(url), cred: o.credentials });
+        return url === "/auth/v1/token" ? new Response(JSON.stringify({ access_token: "tok", expires_in: 300 })) : new Response("", { status: 403 }); };
+      await chrome.storage.local.remove(["crRatePause", "crRatePath"]);
+      const b = await crlfCatRating("G0X7");
+      const n = calls.length, c = await crlfCatRating("G0X8");
+      const { crRatePause = 0 } = await chrome.storage.local.get("crRatePause");
+      window.fetch = real;
+      return { a, crRatePath, shown, b, c, paused: crRatePause > Date.now(), again: calls.length - n, omit: calls.every((x) => x.cred === "omit") };
+    });
+    ok("Bewertung: Sterne ohne Anmeldung aus dem Katalog", rate.omit && rate.a && rate.a.value === 4.8 && rate.a.count === 11000
+      && rate.crRatePath === "/content-reviews/v2/rating/series/" && /4[,.]8/.test(rate.shown), JSON.stringify(rate));
+    ok("Bewertung: abgelehnt -> Pause, alter Weg", rate.b === null && rate.c === null && rate.paused && rate.again === 0, JSON.stringify(rate));
+  } else ok("Öffentliche Fassung: kein Crunchyroll-Katalog geladen", await page.evaluate(() => typeof crlfCatLoad === "undefined"));
 
   const card4 = page.locator(".crlf-item:visible").nth(4);
   await card4.scrollIntoViewIfNeeded();
@@ -393,7 +419,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.mouse.move(b4.x + b4.width / 2, b4.y + b4.height / 2, { steps: 3 });
   await page.waitForTimeout(400);
   const catPeek = await page.evaluate(() => crlfPeekEl?.querySelector(".crlf-pk-desc")?.textContent || "");
-  ok("Vorschau: Beschreibung sofort aus dem Katalog", /aus dem Katalog/.test(catPeek), catPeek);
+  if (HAS_CAT) ok("Vorschau: Beschreibung sofort aus dem Katalog", /aus dem Katalog/.test(catPeek), catPeek);
   await page.evaluate(() => crlfPeekClose());
 
   ok("Kalender ohne Skriptfehler", !errors.length, errors.join(" | "));
@@ -413,29 +439,40 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   const MOCK = `(() => {
     window.__calls = [];
     const now = ${now}, H = ${H}, D = ${D}, iso = (t) => new Date(t).toISOString();
-    const ep = (id, n, t, season) => ({ id, episode_number: n, slug_title: "folge-" + n, premium_available_date: iso(t), season_title: season, series_slug_title: "anime-a",
-      images: { thumbnail: [[{ source: "/slow/thumb.png", width: 320, height: 180 }]] } });
+    // Einträge wie /content/v2/discover/browse?type=episode (je Sprachfassung einer Folge einer)
+    const ep = (id, n, t, series, sid, sea, audio, seasonTitle) => ({ id, slug_title: "folge-" + n, type: "episode",
+      images: { thumbnail: [[{ source: "/slow/thumb.png", width: 320, height: 180 }]] },
+      episode_metadata: { series_id: sid, series_title: series, series_slug_title: series.toLowerCase().replace(/ /g, "-"), season_id: sea,
+        season_title: seasonTitle, season_number: 1, season_display_number: "1", episode_number: n, premium_available_date: iso(t), audio_locale: audio } });
+    const ALL = [
+      ep("EJ3", 3, now - 6.5 * D, "Anime A", "GA", "SJ", "ja-JP", "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A", "GA", "SJ", "ja-JP", "Anime A"),
+      ep("ED3", 3, now - 3 * H, "Anime A", "GA", "SD", "de-DE", "Anime A"),
+      ep("EB7", 7, now - 4 * H, "Anime B", "GB", "SB1", "ja-JP", "Season 1"),
+      // Anime C: letzte Folge vor einer Woche (+2 Std.) -> diese Woche geschätzt
+      ep("EC5", 5, now - 7 * D + 2 * H, "Anime C", "GC", "SC", "ja-JP", "Anime C"),
+      // Synchro-Staffel auf einmal (eine Karte „Folge 1–3“), Staffelname ohne Serie, „Staffel 2“ trotz season_number 4
+      ep("ED1", 1, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"), ep("ED2", 2, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
+      ep("ED3X", 3, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
+      ep("EF7", 7, now - 5 * H, "Anime F", "GF", "SFI", "it-IT", "Season 1 Part 3"),
+      { ...ep("EE9", 9, now - 5 * H, "Anime E", "GE", "SE", "ja-JP", "Staffel 2"), _sn: 4 },
+    ];
+    for (const e of ALL) if (e._sn) e.episode_metadata.season_number = e._sn;
     const J = (o) => new Response(JSON.stringify(o));
     window.fetch = async (url) => {
       url = String(url); window.__calls.push(url);
       if (url === "/" || url === "/de/") return new Response('<script>x={anonClientId:"anon-id",anonClientSecret:""}</script>');
       if (url === "/auth/v1/token") return J({ access_token: "tok", expires_in: 300 });
-      if (url.startsWith("/content/v2/discover/browse")) return J({ data: url.includes("seasonal_tag=") && !window.__browsed++ ? [{ id: "GA", title: "Anime A", slug_title: "anime-a", last_public: iso(now - H) },
-        { id: "GB", title: "Anime B", slug_title: "anime-b", last_public: iso(now - 4 * H) }] : [] });
-      if (url.startsWith("/content/v2/cms/series/GA/seasons")) return J({ data: [{ id: "SJ", title: "Anime A", season_number: 1, season_sequence_number: 1,
-        versions: [{ audio_locale: "ja-JP", guid: "SJ" }, { audio_locale: "de-DE", guid: "SD" }] }] });
-      if (url.startsWith("/content/v2/cms/seasons/SJ/episodes")) return J({ data: [ep("EJ3", 3, now - 6.5 * D, "Anime A"), ep("EJ4", 4, now - 2 * H, "Anime A")] });
-      if (url.startsWith("/content/v2/cms/seasons/SD/episodes")) return J({ data: [ep("ED3", 3, now - 3 * H, "Anime A")] });
-      // Anime B: Staffel 2 nur angekündigt (Platzhalter-Datum), es läuft noch Staffel 1
-      if (url.startsWith("/content/v2/cms/series/GB/seasons")) return J({ data: [
-        { id: "SB2", title: "Anime B Staffel 2", season_number: 2, season_sequence_number: 2, versions: [{ audio_locale: "ja-JP", guid: "SB2" }] },
-        { id: "SB1", title: "Anime B", season_number: 1, season_sequence_number: 1, versions: [{ audio_locale: "ja-JP", guid: "SB1" }] }] });
-      if (url.startsWith("/content/v2/cms/seasons/SB2/episodes")) return J({ data: [ep("EB2X", 1, Date.parse("9998-11-30T00:00:00Z"), "Anime B Staffel 2")] });
-      if (url.startsWith("/content/v2/cms/seasons/SB1/episodes")) return J({ data: [ep("EB7", 7, now - 4 * H, "Anime B")] });
+      if (url.startsWith("/content/v2/discover/browse")) {
+        const q = new URLSearchParams(url.split("?")[1]);
+        if (q.get("type") !== "episode" || !q.get("from_date") || !q.get("to_date")) return J({ data: [], total: 0 });
+        const from = +q.get("from_date"), to = +q.get("to_date"), off = +q.get("start") || 0;
+        const hits = ALL.filter((e) => { const t = Date.parse(e.episode_metadata.premium_available_date); return t >= from && t < to && t <= now; })
+          .sort((x, y) => Date.parse(y.episode_metadata.premium_available_date) - Date.parse(x.episode_metadata.premium_available_date));
+        return J({ data: hits.slice(off, off + 2), total: hits.length }); // nur 2 je Seite: Weiterblättern prüfen
+      }
       if (url.startsWith("/content/v2/cms/objects/")) return J({ data: [] });
       return new Response("", { status: 404 });
     };
-    window.__browsed = 0;
   })();`;
   // Content-Scripts bei document_start sehen schon <html>; Init-Skripte von Playwright laufen davor: kurz darauf warten
   const code = JSON.stringify(files.map((f) => fs.readFileSync(path.join(SRC, f), "utf8")).join("\n;\n"));
@@ -454,15 +491,20 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   }));
   const week0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); })();
   const inWeek = (t) => t >= week0 && t < week0 + 7 * D;
-  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H].filter(inWeek).length;
+  const expect = [now - 6.5 * D, now - 2 * H, now - 3 * H, now - 4 * H, now - 5 * H, now - 5 * H, now - 5 * H].filter(inWeek).length; // Anime D (3 Folgen) = 1 Karte
   ok("Eigener Kalender: alte Adresse, 7 Tage, kein robots-Text", st.path === "/de/simulcastcalendar" && st.days === 7 && st.pre === 0, JSON.stringify({ path: st.path, days: st.days, pre: st.pre, msg: st.msg }));
-  ok("Eigener Kalender: Folgen aus dem Katalog, Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
+  ok("Eigener Kalender: Folgen der Woche (eine Abfrage je Woche, Weiterblättern), Synchro mit Sprachzusatz", st.cards.filter((c) => !c.soon).length === expect
     && (!inWeek(now - 3 * H) || st.cards.some((c) => c.t === "Anime A (German Dub)")) && st.cards.filter((c) => !c.soon).every((c) => /\/de\/watch\/E/.test(c.link)), JSON.stringify(st.cards));
-  ok("Eigener Kalender: laufende Staffel trotz angekündigter neuer Staffel", !inWeek(now - 4 * H) || st.cards.some((c) => /Anime B/.test(c.t) && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: Staffel ohne eigenen Namen heißt „Serie Staffel N“", !inWeek(now - 4 * H) || st.cards.some((c) => c.t === "Anime B Staffel 1" && c.ep.includes("7")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: mehrere Folgen zur selben Zeit = eine Karte „Folge 1–3“", !inWeek(now - 5 * H) || st.cards.filter((c) => /Anime D/.test(c.t)).length === 1
+    && st.cards.some((c) => c.t === "Anime D (German Dub)" && /Folge 1–3/.test(c.ep) && /\/watch\/ED1\//.test(c.link)), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep)));
+  ok("Eigener Kalender: Staffelnamen wie bei Crunchyroll (Serie davor, N aus „Staffel N“)", !inWeek(now - 5 * H)
+    || (st.cards.some((c) => c.t === "Anime F Season 1 Part 3 (Italian Dub)") && st.cards.some((c) => c.t === "Anime E Staffel 2")), JSON.stringify(st.cards.map((c) => c.t)));
+  ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
   await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
-  const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover") || u.includes("/cms/series") || u.includes("/cms/seasons")).length,
+  const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
     cards: document.querySelectorAll("article.release").length }));
   ok("Eigener Kalender: zweiter Aufruf aus dem Speicher (kein Abruf)", again.calls === 0 && again.cards === st.cards.length, JSON.stringify(again));
   // nächste Woche: geschätzte Folge von Anime B (7 + 1); die Vorschau zeigt die zuletzt erschienene Folge 7 mit Fortschritt
@@ -506,12 +548,15 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     sessionStorage.setItem("init", "1");
     sessionStorage.setItem("st_sync", JSON.stringify({ pageTheme: "light", favTop: false }));
     sessionStorage.setItem("st_local", JSON.stringify({ marks: { frieren: "fav", "one piece": "dim" }, playerSpeed: 1.25,
+      endLog: [{ id: 1, at: Date.now(), page: "/watch/X1/folge", frame: "Seite", ver: "test", lines: ["   0.0s 22:10.0  Start (letzte 90 s)"] }],
       alMap: { frieren: { id: 154587, title: "Frieren", url: "https://anilist.co/anime/154587" }, boese: { id: 1, url: "javascript:alert(1)" }, kaputt: { id: "x" } } }));
   });
   await page.addInitScript({ content: STUB });
   await page.goto(BASE + "/src/popup.html");
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById("more").open = true; });
+  const endInfo = await page.evaluate(() => [document.getElementById("endInfo").hidden, document.getElementById("endInfo").textContent, !document.getElementById("errCopy").hidden, endText()]);
+  ok("Popup: Folgenende-Protokoll wird angezeigt und mitkopiert", !endInfo[0] && /1 Folge/.test(endInfo[1]) && endInfo[2] && /== .*\/watch\/X1\/folge · Seite · BetterRoll test\n {3}0\.0s 22:10\.0 {2}Start/.test(endInfo[3]), JSON.stringify(endInfo));
   const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#bkSave")]);
   const file = path.join(fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "br-")), "backup.json");
   await dl.saveAs(file);
@@ -690,6 +735,64 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Nächste Folge ohne Skriptfehler", !errors.length, errors.join(" | "));
   await page.close();
 }
+// ===== 3f. End-Wächter, Pause von selbst, Fahrtenschreiber, nächste Folge aus dem Katalog =====
+{
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const endLog = () => page.evaluate(() => { const l = JSON.parse(sessionStorage.getItem("st_local") || "{}").endLog || []; return l[0] ? l[0].lines.join("\n") : ""; });
+  // Zeit läuft bis 1412,0 und steht dann vor einer Lücke im Puffer (1412,0–1412,6), 8 s vor Schluss
+  const gapPage = async (fix) => { await page.goto(BASE + "/de/watch/CCC333/folge-3"); await page.evaluate((fix) => { const v = document.getElementById("v"); let pos = 1410, run = false; window.__seeks = [];
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; __seeks.push(+x.toFixed(2)); if (fix && x >= 1412.6) run = true; } });
+    Object.defineProperty(v, "buffered", { get: () => ({ length: 2, start: (i) => [1300, 1412.6][i], end: (i) => [1412.0, 1420][i] }) });
+    window.__onNext = () => { pos = 0; run = false; };
+    setInterval(() => { if (run) pos += 0.25; else if (pos < 1412) pos = Math.min(1412, pos + 0.25); }, 250);
+    return v.play(); }, fix); };
+  await gapPage(true);
+  await page.waitForTimeout(6500);
+  const gap = await page.evaluate("[__seeks.slice(), __next, document.getElementById('v').currentTime]");
+  ok("End-Wächter: steht vor Lücke im Puffer -> springt drüber, Rest läuft", JSON.stringify(gap[0]) === "[1412.65]" && gap[1] === 0 && gap[2] > 1413, JSON.stringify(gap));
+  await gapPage(false);
+  await page.waitForTimeout(8500);
+  const stuckNext = await page.evaluate("[__seeks.slice(), __next]");
+  ok("End-Wächter: steht danach weiter -> nächste Folge", stuckNext[0][0] === 1412.65 && stuckNext[1] === 1, JSON.stringify(stuckNext));
+  const log = await endLog();
+  ok("Fahrtenschreiber: Start, Hänger, Anstoßen, „ended“, Knopf und Folgenwechsel im Protokoll",
+    ["Start (letzte 90 s)", "Wächter 1: Zeit steht", "angestoßen, weiter bei 23:32", "Wächter 2", "„ended“ gemeldet", "Knopf „Nächste Folge“ gedrückt (Nächste Folge", "andere Folge läuft"].every((x) => log.includes(x)), log.slice(-900));
+  // Player hält 3 s vor Schluss von selbst an: nach 2 s weiter; eigene Pause bleibt
+  const pausePage = async () => { await page.goto(BASE + "/de/watch/CCC333/folge-3"); await page.evaluate(() => { const v = document.getElementById("v"); let pos = 1417;
+    Object.defineProperty(v, "duration", { get: () => 1420 }); Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
+    window.__onNext = () => { pos = 0; }; return v.play(); }); await page.waitForTimeout(300); };
+  await pausePage();
+  await page.evaluate(() => document.getElementById("v").pause());
+  await page.waitForTimeout(1500);
+  const early = await page.evaluate("__next");
+  await page.waitForTimeout(1500);
+  ok("Pause von selbst kurz vor Schluss: nach 2 s nächste Folge", early === 0 && (await page.evaluate("__next")) === 1, `${early} / ${await page.evaluate("__next")}`);
+  await pausePage();
+  await page.click("#v");
+  await page.evaluate(() => document.getElementById("v").pause());
+  await page.waitForTimeout(3500);
+  ok("Eigene Pause kurz vor Schluss bleibt Pause", (await page.evaluate("__next")) === 0, `${await page.evaluate("__next")}x`);
+  // Katalog: Adresse der nächsten erschienenen Folge derselben Staffel (crnext.js nur in der privaten Fassung)
+  if (fs.existsSync(path.join(SRC, "crnext.js"))) {
+    await page.goto(BASE + "/de/watch/FFF666/folge-6");
+    const cat = await page.evaluate(async () => [await crlfNextUrl("FFF666"), await crlfNextUrl("HHH888"), __api.slice()]);
+    ok("Katalog: nächste Folge der Staffel, noch nicht erschienene zählen nicht", cat[0] === BASE + "/de/watch/GGG777/folge-7" && cat[1] === "", JSON.stringify(cat.slice(0, 2)));
+    ok("Katalog: anonymer Schlüssel, je Folge einmal gefragt", cat[2].filter((x) => x.startsWith("/auth/v1/token Basic ")).length === 1
+      && cat[2].includes("/content/v2/cms/objects/FFF666 Bearer tok") && cat[2].filter((x) => x.startsWith("/content/v2/cms/objects/FFF666")).length === 1, JSON.stringify(cat[2]));
+    await page.evaluate(() => { const v = document.getElementById("v"); Object.defineProperty(v, "duration", { get: () => 1420 });
+      Object.defineProperty(v, "currentTime", { get: () => 1420, set() {} }); v.dispatchEvent(new Event("ended")); });
+    await page.waitForURL(/GGG777/, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    ok("Nächste Folge: ohne Knopf und Link die Katalog-Adresse geöffnet", /\/de\/watch\/GGG777\/folge-7$/.test(page.url()), page.url());
+    const log2 = await endLog();
+    ok("Fahrtenschreiber läuft auf der neuen Seite weiter", ["Katalog: nächste Folge /de/watch/GGG777/folge-7", "Katalog-Adresse der nächsten Folge geöffnet", "Seite geladen: /watch/GGG777/folge-7", "andere Folge läuft: /watch/GGG777/folge-7"].every((x) => log2.includes(x)), log2.slice(-700));
+  }
+  ok("End-Wächter/Katalog ohne Skriptfehler", !errors.length, errors.join(" | "));
+  await page.close();
+}
 // ===== 3e. Spul-Knöpfe in der Player-Leiste: [−10] ▶ [+10] −1:30 −30 +1:30, Klick spult, nicht bis über das Ende =====
 {
   const page = await browser.newPage();
@@ -757,7 +860,9 @@ server.close();
 }
 
 // ===== 5. Update-Hinweis am Symbol: heller Ring nur bei neuerer Version, Zeitplan nur einmal angelegt =====
-{
+// (nur private Fassung; die öffentliche Linie hat keinen Update-Helfer)
+const BG = fs.readFileSync(path.join(SRC, "background.js"), "utf8");
+if (BG.includes("crlf-update-check")) {
   const handlers = [], icons = [], alarms = {}, store = {};
   let created = 0; const startups = []; let answer = { ok: true, newer: true, latest: "9.9.9" };
   const noop = { addListener() {} };
@@ -793,7 +898,7 @@ server.close();
   ping(); await new Promise((r) => setTimeout(r, 20)); ping(); await new Promise((r) => setTimeout(r, 20));
   ok("Update-Symbol: Kalender öffnen prüft nach 15 Min.", asked === 1 && /upd/.test(icons.at(-1)[16]), `${asked} Prüfungen`);
   for (const f of Object.values(icons[0])) ok(`Update-Symbol: ${f} vorhanden`, fs.existsSync(path.join(SRC, f)));
-}
+} else ok("Öffentliche Fassung: ohne Update-Helfer", !BG.includes("sendNativeMessage") && !BG.includes("nativeMessaging"));
 
 // ===== 6. Design „Video“: jedes Motiv hat Video, Standbild und Eintrag in der Popup-Auswahl =====
 {
