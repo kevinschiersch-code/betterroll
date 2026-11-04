@@ -100,11 +100,12 @@ h2 { margin: 0 0 4px; font-size: 10.5px; font-weight: 700; color: var(--muted); 
 /* mehrere kleine Schalter in einer Zeile („Knöpfe“ ★ ▼ 💬 🏆, „Player“ ⏩ ⏭ ✕) */
 .pair { cursor: default; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 5px; }
 .pair > span { grid-column: 1 / -1; }
-.pair label { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 5px; cursor: pointer; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); }
+.pair label { display: flex; align-items: center; gap: 4px; padding: 3px 3px 3px 3px; cursor: pointer; border-radius: 9px; background: var(--card-2); border: 1px solid var(--line); }
 .pair label b { flex: 1; font-weight: 600; font-size: 11px; letter-spacing: -.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pair .chip { width: 14px; height: 20px; color: var(--muted); }
-.pair .chip svg { width: 14px; height: 14px; }
-.pair label:has(.switch:checked) .chip { color: var(--accent); }
+/* Symbole wie auf der Karte „Player“: kleines Kästchen, graue Linie, gleiche Strichstärke – einheitlich, egal ob an oder aus */
+.pair .chip { flex: none; width: 18px; height: 18px; border-radius: 5px; color: var(--muted); background: var(--card); border: 1px solid var(--line); }
+.pair .chip svg { width: 11px; height: 11px; stroke-width: 2; }
+.pair label:has(.switch:checked) .chip { color: var(--fg); }
 .pair .switch { width: 28px; height: 17px; }
 .pair .switch::after { width: 11px; height: 11px; }
 .pair .switch:checked::after { transform: translateX(11px); }
