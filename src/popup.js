@@ -78,20 +78,17 @@ chrome.storage.sync.get(CR_DEFAULT_SETTINGS, (s) => {
   $("active").checked = s.active;
   $("language").value = s.language;
   radio("mode", modeOf(s)).checked = true;
-  $("hideTop").checked = s.hideTop;
   $("featureFav").checked = s.featureFav;
   $("featureDim").checked = s.featureDim;
   $("favTop").checked = s.favTop;
   $("diag").checked = s.diag;
   $("hotkeys").checked = s.hotkeys;
   if ($("crApi")) $("crApi").checked = s.crApi;
-  $("featureComments").checked = s.featureComments;
   $("tidy").checked = s.cleanTitles && s.seasonTag;
   $("autoClose").checked = s.autoClose;
   $("speedCtl").checked = s.speedCtl;
   $("jumpBtns").checked = s.jumpBtns;
   $("autoSkip").checked = s.autoSkip;
-  $("featureRank").checked = s.featureRank;
   radio("dateFormat", s.dateFormat).checked = true;
   radio("design", designOf(s)).checked = true;
   syncBanner();
@@ -148,19 +145,16 @@ $("language").addEventListener("change", (e) => {
   if (ui !== crlfLang) { crlfLang = ui; renderTexts(); } else syncMode();
 });
 for (const r of document.querySelectorAll('input[name="mode"]')) r.addEventListener("change", (e) => { syncMode(); save(MODES[e.target.value]); });
-onSwitch("hideTop", "hideTop");
 onSwitch("featureFav", "featureFav");
 onSwitch("featureDim", "featureDim");
 onSwitch("favTop", "favTop");
 onSwitch("diag", "diag");
 onSwitch("hotkeys", "hotkeys");
 if ($("crApi")) onSwitch("crApi", "crApi");
-onSwitch("featureComments", "featureComments");
 onSwitch("autoClose", "autoClose");
 onSwitch("speedCtl", "speedCtl");
 onSwitch("jumpBtns", "jumpBtns");
 onSwitch("autoSkip", "autoSkip");
-onSwitch("featureRank", "featureRank");
 $("tidy").addEventListener("change", (e) => save({ cleanTitles: e.target.checked, seasonTag: e.target.checked }));
 // Ein Design = Hell/Dunkel plus Hintergrund. Der ☀/☾-Knopf auf der Seite schaltet nur Hell/Dunkel um
 // und behält das zuletzt gewählte dunkle Design.

@@ -105,7 +105,7 @@ def public_variant(folder: Path, firefox: bool):
     # Schalter „Messung“ ausblenden; popup.js liest das Feld weiter, darum bleibt ein verstecktes Kästchen
     # dasselbe für den Kommentare-Knopf (💬): gibt es in der öffentlichen Linie nicht (Wunsch Enigma, 04.11.2026)
     # ebenso „Top 10“ (featureRank) und „Kopfbereich ausblenden“ (hideTop, auf der eigenen Kalenderseite ohne Wirkung)
-    for fid in ("diag", "featureComments", "featureRank", "hideTop"):
+    for fid in ("diag",):
         a = h.rindex("<label", 0, h.index(f'id="{fid}"'))
         h = h[:a] + f'<input type="checkbox" id="{fid}" hidden>' + h[h.index("</label>", a) + len("</label>"):]
     h = h.replace('<input type="url" id="bannerUrl"', '<input type="url" id="bannerUrl" hidden', 1)
@@ -121,11 +121,11 @@ def public_variant(folder: Path, firefox: bool):
     # Willkommensseite ohne den Abschnitt zu Kommentaren
     wh = folder / "welcome.html"
     w = wh.read_text(encoding="utf-8")
-    while "<article><b>💬</b>" in w:
+    while "<article><b>💬</b>" in w:  # seit 1.87.26 auch privat entfernt
         w = cut(w, "<article><b>💬</b>", "</article>")
     wh.write_text(w, encoding="utf-8")
     # Standard: Kommentare aus, Hintergrund „Video“ mit wechselnden Motiven (pageVideo „auto“ ist schon Standard)
-    for name, old, new in (("languages.js", "featureComments: true", "featureComments: false"), ("languages.js", "featureRank: true", "featureRank: false"), ("languages.js", 'pageBg: "aurora"', 'pageBg: "video"'),
+    for name, old, new in (("languages.js", 'pageBg: "aurora"', 'pageBg: "video"'),
                            ("theme-start.js", 'pageBg: "aurora"', 'pageBg: "video"'), ("theme.js", 'let crlfBg = "aurora";', 'let crlfBg = "video";'),
                            # eigene Kennung in der Kalender-Umleitung: neben der privaten Fassung baut jede nur ihre Seite
                            ("rules.json", "br=priv", "br=pub"), ("calbuild.js", 'const LINE = "priv";', 'const LINE = "pub";')):
