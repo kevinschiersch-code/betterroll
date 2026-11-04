@@ -62,10 +62,12 @@
     /* feste Breite wie der alte Kalender: Browser-Zoom vergrößert die ganze Seite, nicht nur den Inhalt der Kacheln */
     .crlf-calweek { display: flex; align-items: flex-start; gap: 8px; padding: 0 24px 40px; width: max-content; margin: 0 auto; }
     .crlf-calweek section.day { flex: 0 0 190px; width: 190px; min-width: 0; position: relative; }
-    /* heute: etwas breiter, leicht hinterlegt, Akzentrahmen */
-    html body .crlf-calweek section.day[data-crlf-today] { flex-basis: 240px !important; width: 240px !important; border-radius: 14px;
-      background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.07) !important; box-shadow: inset 0 0 0 1px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.35); padding: 0 6px 6px !important; }
-    html body .crlf-calweek section.day[data-crlf-today] > h1 { color: var(--crlf-accent, #f47521) !important; }
+    /* heute: breiter, hinterlegt, deutlicher Rahmen in Akzentfarbe, Tageskopf unterstrichen */
+    html body .crlf-calweek section.day[data-crlf-today] { flex-basis: 240px !important; width: 240px !important; border-radius: 12px; box-sizing: border-box;
+      background: rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.09) !important; padding: 8px !important; margin-top: -8px;
+      box-shadow: inset 0 0 0 2px var(--crlf-accent, #f47521), 0 0 14px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.45) !important; }
+    html body .crlf-calweek section.day[data-crlf-today] > h1 { color: var(--crlf-accent, #f47521) !important; font-weight: 800;
+      padding-bottom: 4px; border-bottom: 3px solid var(--crlf-accent, #f47521); }
     /* Jetzt-Linie: alles darunter ist noch nicht erschienen; sie rutscht beim Erscheinen sanft nach unten */
     .crlf-nowline { position: absolute; left: 2px; right: 2px; height: 0; border-top: 2px solid var(--crlf-accent, #f47521); z-index: 3;
       pointer-events: none; transition: top .6s ease; box-shadow: 0 0 8px rgba(var(--crlf-acc-rgb, 244, 117, 33), 0.8); }

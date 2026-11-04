@@ -504,6 +504,12 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
     || (st.cards.some((c) => c.t === "Anime F Season 1 Part 3 (Italian Dub)") && st.cards.some((c) => c.t === "Anime E Staffel 2")), JSON.stringify(st.cards.map((c) => c.t)));
   ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
+  const today = await page.evaluate(() => { const c = document.querySelector("section.day[data-crlf-today]"); if (!c) return null;
+    const cs = getComputedStyle(c), h = getComputedStyle(c.querySelector(":scope > h1"));
+    return { shadow: cs.boxShadow, under: h.borderBottomWidth + " " + h.borderBottomStyle, n: document.querySelectorAll("section.day[data-crlf-today]").length }; });
+  if (process.env.BR_SHOT) await page.screenshot({ path: process.env.BR_SHOT });
+  ok("Eigener Kalender: heute deutlich umrandet, Tageskopf unterstrichen", today && today.n === 1 && /0px 0px 0px 2px inset/.test(today.shadow)
+    && today.under === "3px solid", JSON.stringify(today));
   await page.goto(BASE + "/robots.txt?simulcastcalendar&p=de/"); // wie die Umleitung beim erneuten Öffnen
   await page.waitForSelector("article.release", { timeout: 5000 }).catch(() => {});
   const again = await page.evaluate(() => ({ calls: (window.__calls || ["fehlt"]).filter((u) => u.startsWith("/content/v2/discover")).length,
