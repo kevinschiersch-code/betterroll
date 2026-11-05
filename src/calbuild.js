@@ -214,7 +214,9 @@
       for (let k = 1; k <= 3; k++) {
         const d = last.d + k * 7 * 864e5, n = +last.n + k;
         if (known.has(n)) continue;
-        if (d <= now || d < start) continue;
+        // schon fällig, aber noch nicht da (Crunchyroll später dran, Woche noch nicht neu abgerufen): bis zu einem Tag
+        // weiter als „voraussichtlich“ zeigen, sonst verschwindet der Anime genau zur Erscheinungszeit aus dem Kalender
+        if (d <= now - 864e5 || d < start) continue;
         if (d >= end) break;
         items.push({ id: "", n, d, sid: last.sid, slug2: last.slug2, title: last.title, img: last.img, soon: true, last });
       }
@@ -241,7 +243,7 @@
         const seriesUrl = path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`);
         const target = it.id ? path(`watch/${it.id}${it.slug ? "/" + it.slug : ""}`) : seriesUrl;
         const thumb = it.img ? el("img", { src: it.img, width: "160", height: "90", alt: "", loading: "lazy" }) : null;
-        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon && it.d > Date.now() ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null,
+        ol.append(el("li", {}, el("article", { class: `release js-release${it.soon ? " crlf-soon" : ""}`, "data-crlf-thumb": it.soon ? null : it.img || null,
           "data-crlf-ep": it.id ? it.id.toUpperCase() : null,
           // geschätzte Folge: die Vorschau zeigt stattdessen die zuletzt erschienene (Bild, Fortschritt, Abspielen)
           "data-crlf-last-ep": it.last && it.last.id ? it.last.id.toUpperCase() : null, "data-crlf-last-n": it.last ? String(it.last.n) : null,
@@ -249,7 +251,7 @@
           "data-crlf-last-href": it.last && it.last.id ? path(`watch/${it.last.id}${it.last.slug ? "/" + it.last.slug : ""}`) : null },
           el("time", { class: "available-time", datetime: when.toISOString() }, fmtTime.format(when)),
           el("div", { class: "season-name" }, el("a", { href: path(`series/${it.sid}${it.slug2 ? "/" + it.slug2 : ""}`) }, el("cite", { itemprop: "name" }, it.title))),
-          el("div", { class: "episode" }, el("a", { href: target, class: "crlf-eplink" }, epText), " ", el("span", {}, it.d > Date.now() ? "" : L.avail)),
+          el("div", { class: "episode" }, el("a", { href: target, class: "crlf-eplink" }, epText), " ", el("span", {}, it.soon || it.d > Date.now() ? "" : L.avail)),
           thumb && el("a", { href: target, class: "available-episode-link" }, thumb))));
       }
       week.append(el("section", { class: "day", "data-crlf-today": ymd(day) === ymd(new Date()) ? "" : null },

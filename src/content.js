@@ -872,7 +872,8 @@ function applyFilterNow() {
     if (!outer.has(release)) continue;
     const title = releaseTitle(release);
     if (title === null) continue;
-    entries.push({ release, hide: shouldHide(title), base: crBaseTitle(title), lang: crDetectLanguage(title) });
+    const list = releaseContainer(release).parentElement;
+    entries.push({ release, list, hide: shouldHide(title), base: crBaseTitle(title), lang: crDetectLanguage(title) });
   }
 
   // Sicherheitsnetz: jeder Anime bleibt mindestens einmal sichtbar, auch wenn die Filter ihn ganz wegnehmen
@@ -888,14 +889,18 @@ function applyFilterNow() {
     pick.hide = false;
   }
 
-  // Synchro und Original desselben Anime zu einer Karte zusammenfassen; die andere Fassung als Hinweis-Link
+  // Synchro und Original desselben Anime zu einer Karte zusammenfassen; die andere Fassung als Hinweis-Link.
+  // Nur innerhalb eines Tages: an einem anderen Tag ist es eine andere Folge (z. B. Original Do., Synchro Sa.),
+  // die sonst ganz aus dem Kalender verschwände.
   for (const e of entries) e.alts = [];
   if (settings.active && settings.merge) {
-    const visible = new Map();
+    const visible = new Map(), listIds = new Map();
     for (const e of entries) {
       if (e.hide) continue;
-      if (!visible.has(e.base)) visible.set(e.base, []);
-      visible.get(e.base).push(e);
+      if (!listIds.has(e.list)) listIds.set(e.list, listIds.size);
+      const k = `${listIds.get(e.list)}|${e.base}`;
+      if (!visible.has(k)) visible.set(k, []);
+      visible.get(k).push(e);
     }
     for (const group of visible.values()) {
       if (group.length < 2) continue;

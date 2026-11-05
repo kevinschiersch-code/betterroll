@@ -184,6 +184,22 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("★ markiert und oben", state.fav >= 1 && /^Anime 0-3\b/.test(state.day0[0]), state.day0.slice(0, 2).join(", "));
   ok("▼ ausgegraut und unten", state.dim >= 1 && /^Anime 0-1\b/.test(state.day0.at(-1)), state.day0.at(-1));
   ok("Knöpfe an den Karten und unten rechts", state.actions > 0 && state.tools);
+  // derselbe Anime an einem anderen Tag (z. B. Original Do., Synchro Sa.) ist eine andere Folge: nicht wegfassen
+  const cross = await page.evaluate(async () => {
+    const day1 = document.querySelectorAll("ol.releases")[1];
+    const li = document.createElement("li");
+    li.innerHTML = '<article class="release js-release" id="crosstest"><time class="available-time" datetime="2026-10-20T18:00:00">18:00</time>'
+      + '<div class="season-name"><a href="/de/series/G0X5/anime-0-5"><cite itemprop="name">Anime 0-5</cite></a></div>'
+      + '<div class="episode"><span>Folge 7</span> <span>Verfügbar</span></div></article>';
+    day1.append(li);
+    await new Promise((r) => setTimeout(r, 800));
+    const c = document.getElementById("crosstest").closest(".crlf-item") || li;
+    const shown = getComputedStyle(c).display !== "none";
+    li.remove();
+    await new Promise((r) => setTimeout(r, 300));
+    return shown;
+  });
+  ok("Zusammenführen nur am selben Tag (Anime an anderem Tag bleibt sichtbar)", cross);
 
   // Seite zeichnet die Folgen-Zeile neu (wie beim Überfahren): 💬 und gekürzter Text müssen vor dem nächsten Bild zurück sein
   const redraw = await page.evaluate(async () => {
