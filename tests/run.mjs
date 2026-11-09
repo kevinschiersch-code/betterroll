@@ -470,6 +470,10 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
       ep("EB7", 7, now - 4 * H, "Anime B", "GB", "SB1", "ja-JP", "Season 1"),
       // Anime C: letzte Folge vor einer Woche (+2 Std.) -> diese Woche geschätzt
       ep("EC5", 5, now - 7 * D + 2 * H, "Anime C", "GC", "SC", "ja-JP", "Anime C"),
+      // Anime G: Folge 12 vor zwei Wochen, Folge 13 blieb letzte Woche aus -> beendet, keine Schätzung mehr
+      ep("EG12", 12, now - 14 * D + 2 * H, "Anime G", "GG", "SG", "ja-JP", "Anime G"),
+      // Anime H: letzte Folge vor einer Woche, Katalog meldet die Staffel als fertig -> keine Schätzung
+      ep("EH12", 12, now - 7 * D + 2 * H, "Anime H", "GH", "SH", "ja-JP", "Anime H"),
       // Synchro-Staffel auf einmal (eine Karte „Folge 1–3“), Staffelname ohne Serie, „Staffel 2“ trotz season_number 4
       ep("ED1", 1, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"), ep("ED2", 2, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
       ep("ED3X", 3, now - 5 * H, "Anime D", "GD", "SDD", "de-DE", "Anime D"),
@@ -492,7 +496,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
           .sort((x, y) => Date.parse(y.episode_metadata.premium_available_date) - Date.parse(x.episode_metadata.premium_available_date));
         return J({ data: hits.slice(off, off + 2), total: hits.length }); // nur 2 je Seite: Weiterblättern prüfen
       }
-      if (url.startsWith("/content/v2/cms/objects/")) return J({ data: [] });
+      if (url.startsWith("/content/v2/cms/objects/")) return J({ data: url.split("?")[0].split("/").pop().split(",")
+        .filter((id) => id === "SH" || id === "SC").map((id) => ({ id, type: "season", is_complete: id === "SH" })) });
       return new Response("", { status: 404 });
     };
   })();`;
@@ -523,6 +528,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   ok("Eigener Kalender: Staffelnamen wie bei Crunchyroll (Serie davor, N aus „Staffel N“)", !inWeek(now - 5 * H)
     || (st.cards.some((c) => c.t === "Anime F Season 1 Part 3 (Italian Dub)") && st.cards.some((c) => c.t === "Anime E Staffel 2")), JSON.stringify(st.cards.map((c) => c.t)));
   ok("Eigener Kalender: kommende Folge aus der Vorwoche geschätzt", !inWeek(now + 2 * H) || st.cards.some((c) => c.soon && c.t === "Anime C" && c.ep.includes("6")), JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
+  ok("Eigener Kalender: beendete Staffel ohne Schätzung (Folge ausgeblieben / Katalog fertig)", !st.cards.some((c) => c.soon && /Anime [GH]/.test(c.t)),
+    JSON.stringify(st.cards.map((c) => c.t + " " + c.ep + (c.soon ? " ~" : ""))));
   ok("Eigener Kalender: BetterRoll-Knöpfe an allen Karten", st.cards.length > 0 && st.cards.every((c) => c.btns), `${st.cards.length} Karten`);
   const today = await page.evaluate(() => { const c = document.querySelector("section.day[data-crlf-today]"); if (!c) return null;
     const cs = getComputedStyle(c), h = getComputedStyle(c.querySelector(":scope > h1"));
