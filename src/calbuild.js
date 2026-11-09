@@ -5,7 +5,8 @@
 // (section.day > ol.releases > li > article.release), damit alle übrigen Teile von BetterRoll unverändert darauf arbeiten.
 // Daten seit 1.87.20 wie die neue Seite von Crunchyroll: eine Abfrage je Woche (alle erschienenen Folgen), mit dem
 // anonymen Schlüssel aus crauth.js (keine Cookies, kein Konto). Kommende Folgen werden aus der letzten Folge + 7 Tage
-// geschätzt (dafür die drei Wochen davor, ebenfalls je eine Abfrage, gemerkt).
+// geschätzt (dafür die drei Wochen davor, ebenfalls je eine Abfrage, gemerkt). Beendete Staffeln bekommen keine
+// Schätzung mehr: wenn die erwartete Folge über einen Tag ausbleibt oder der Katalog die Staffel als fertig meldet.
 (() => {
   if (location.pathname !== "/robots.txt" || !/(?:^\?|&)simulcastcalendar(?=&|$)/.test(location.search)) return;
   // zweites BetterRoll (öffentliche und private Fassung gleichzeitig installiert): die Umleitung trägt die Linie (br=),
@@ -25,6 +26,9 @@
   history.replaceState(null, "", `/${loc ? loc + "/" : ""}simulcastcalendar${rest ? "?" + rest : ""}`);
 
   const CAL_WEEK_TTL = 7 * 864e5, CAL_LIVE_TTL = 30 * 60e3, CAL_WEEKS_KEPT = 10;
+  // Staffel fertig? (Katalog is_complete) je Staffel-ID gemerkt: fertig 30 Tage, noch laufend 6 Std., dann neu fragen
+  const SEA_DONE_TTL = 30 * 864e5, SEA_OPEN_TTL = 6 * 36e5;
+  let seaDone = {}; // Staffel-ID -> { c: 1 = fertig / 0 = läuft, t }
   const DUB = { "de-DE": "German", "en-US": "English", "es-419": "Spanish", "es-ES": "Castilian", "pt-BR": "Portuguese", "pt-PT": "Portuguese (Portugal)",
     "fr-FR": "French", "it-IT": "Italian", "ru-RU": "Russian", "ar-SA": "Arabic", "hi-IN": "Hindi", "ta-IN": "Tamil", "te-IN": "Telugu",
     "zh-CN": "Chinese", "zh-HK": "Chinese", "zh-TW": "Chinese", "ko-KR": "Korean", "th-TH": "Thai", "id-ID": "Indonesian", "ms-MY": "Malay",
@@ -186,7 +190,8 @@
   };
 
   // Kalender der Woche: erschienene Folgen und geschätzte nächste Folgen (letzte Folge einer Sprachfassung + 7 Tage,
-  // höchstens 3 Wochen weit, nur wenn die letzte Folge höchstens 3 Wochen her ist)
+  // höchstens 3 Wochen weit). Keine Schätzung mehr, sobald die erwartete nächste Folge über einen Tag überfällig ist
+  // (Staffel zu Ende oder Pause; kommt doch eine neue, wird ab ihr wieder geschätzt) oder der Katalog sie als fertig meldet.
   function build(main, base) {
     const now = Date.now();
     // mehrere Folgen einer Sprachfassung zur selben Zeit (z. B. Synchro-Staffel auf einmal): eine Karte „Folge 1–11“,
@@ -209,8 +214,13 @@
       g.known.add(+it.n);
       if (!g.last || it.d > g.last.d || (it.d === g.last.d && +it.n > +g.last.n)) g.last = it;
     }
+    const ask = [];
     for (const { last, known } of bySea.values()) {
-      if (!last || last.d < now - 21 * 864e5 || !isFinite(+last.n)) continue;
+      if (!last || !isFinite(+last.n)) continue;
+      if (last.d + 8 * 864e5 <= now && !known.has(+last.n + 1)) continue; // erwartete Folge ausgeblieben: beendet
+      const sd = seaDone[last.sea];
+      if (sd && sd.c) continue; // laut Katalog fertig
+      if (/^[A-Z0-9]+$/i.test(last.sea) && !(sd && now - sd.t < SEA_OPEN_TTL)) ask.push(last.sea);
       for (let k = 1; k <= 3; k++) {
         const d = last.d + k * 7 * 864e5, n = +last.n + k;
         if (known.has(n)) continue;
@@ -221,7 +231,30 @@
         items.push({ id: "", n, d, sid: last.sid, slug2: last.slug2, title: last.title, img: last.img, soon: true, last });
       }
     }
-    return { items, t: start.getTime() > now ? Math.max(0, ...base.map((w) => w.t)) : main.t };
+    return { items, ask, t: start.getTime() > now ? Math.max(0, ...base.map((w) => w.t)) : main.t };
+  }
+
+  // Katalog: sind die Staffeln mit Schätzung schon fertig? Gebündelt (je Abruf bis 40 IDs), Fehler sind still (dann
+  // bleibt es bei der Regel „erwartete Folge ausgeblieben“).
+  async function checkDone(ids) {
+    ids = [...new Set(ids)];
+    if (!ids.length) return false;
+    let changed = false;
+    for (let i = 0; i < ids.length; i += 40) {
+      const part = ids.slice(i, i + 40);
+      const j = await api(`/content/v2/cms/objects/${part.join(",")}?locale=${crlfCatLocale()}`).catch(() => null);
+      if (!j) return changed;
+      const got = new Map(((j && j.data) || []).filter((o) => o && o.id).map((o) => [String(o.id), o]));
+      for (const id of part) {
+        const o = got.get(id) || {}, m = o.season_metadata || {};
+        const c = o.is_complete === true || m.is_complete === true ? 1 : 0;
+        if (c && !(seaDone[id] && seaDone[id].c)) changed = true;
+        seaDone[id] = { c, t: Date.now() };
+      }
+    }
+    for (const [k, v] of Object.entries(seaDone)) if (Date.now() - v.t > (v.c ? SEA_DONE_TTL : SEA_OPEN_TTL)) delete seaDone[k];
+    await chrome.storage.local.set({ calSeaDone: seaDone }).catch(() => {});
+    return changed;
   }
 
   const fmtStamp = new Intl.DateTimeFormat(de ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -314,9 +347,10 @@
     .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
 
   // nur neu zeichnen, wenn sich etwas geändert hat (sonst nur den Stand), damit nichts unnötig springt
-  let shown = "";
+  let shown = "", asked = [];
   function show(main, base) {
     const w = build(main, base);
+    asked = w.ask;
     const sig = w.items.map((i) => `${i.id}|${i.d}|${i.n}|${i.n2}|${i.soon ? 1 : 0}|${i.title}`).sort().join("\n");
     if (sig === shown && document.querySelector(".crlf-calweek")) { stamp(w.t); return; }
     shown = sig;
@@ -344,13 +378,15 @@
     const mons = [start, addDays(start, -7), addDays(start, -14), addDays(start, -21)];
     try {
       if (typeof crlfCatToken !== "function") throw new Error("crauth.js fehlt");
-      const { calWeeks3: store = {} } = await chrome.storage.local.get("calWeeks3");
+      const { calWeeks3: store = {}, calSeaDone = {} } = await chrome.storage.local.get(["calWeeks3", "calSeaDone"]);
+      seaDone = calSeaDone && typeof calSeaDone === "object" ? calSeaDone : {};
+      const done = async () => { if (await checkDone(asked)) showAll(); };
       const weeks = mons.map((m) => (m.getTime() > now ? { t: now, items: [] } : store[keyOf(m)] || null));
       const showAll = () => show(weeks[0], weeks.slice(1).map((w) => w || none));
       if (weeks[0]) showAll();
       else { msg.replaceChildren(L.load); if (!msg.isConnected) document.body.append(msg); }
       const todo = mons.map((m, i) => stale(m, weeks[i], force));
-      if (!todo.some(Boolean)) return;
+      if (!todo.some(Boolean)) { await done(); return; }
       bar.querySelector(".crlf-calstamp").textContent = L.load;
       let changed = false;
       const get = async (i) => {
@@ -366,6 +402,7 @@
       showAll();
       await Promise.all([1, 2, 3].map((i) => get(i).catch(() => {})));
       showAll();
+      await done();
       if (changed) await saveWeeks(store);
     } catch (e) {
       const retry = el("button", { type: "button" }, L.retry);
