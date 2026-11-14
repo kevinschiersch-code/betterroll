@@ -11,7 +11,7 @@
 // Nächste Folge (mit autoSkip): in der letzten Sekunde, bei „ended“, wenn der Player in den letzten 5 s (nach dem
 // Abspann-Sprung schon früher) von selbst anhält, oder nach einem Hänger (End-Wächter). Dann: Player-Leiste per
 // Mausbewegung einblenden und den Knopf „Nächste Folge“ drücken; ist 3 s später noch dieselbe Folge am Ende, zweiter
-// Versuch mit echten Mausereignissen; danach der Link „Nächste Folge“ der Seite, als letzter Weg die Adresse der
+// Versuch mit echten Mausereignissen; 1,5 s danach der Link „Nächste Folge“ der Seite, als letzter Weg die Adresse der
 // nächsten Folge aus dem Crunchyroll-Katalog (crnext.js, nur private Fassung). Nach der letzten Folge passiert nichts.
 // Wer selbst eingreift (Maus/Taste), bekommt keinen weiteren Versuch; eine eigene Pause bleibt Pause. Steckt der
 // Player in einem Rahmen, meldet der das Ende per postMessage an die Seite, die die Adresse kennt.
@@ -22,6 +22,9 @@
 // angestoßen: über eine Lücke im Puffer springen bzw. minimal weiter + abspielen; ist nichts mehr geladen und lädt
 // auch nichts (Daten enden vor der angegebenen Länge) oder ist fast Schluss: ans Ende springen. Steht er danach
 // weiter, geht es zur nächsten Folge (vorher bekommt der Player das fehlende „ended“ gemeldet). Je Folge einmal.
+//
+// Pausen-Wächter: Bleibt der Player nach dem Klick auf den Abspann-Knopf in Pause stehen, wird er angestoßen bzw. es
+// geht zur nächsten Folge (siehe unten).
 //
 // Fahrtenschreiber: Ab 90 s vor Schluss (oder ab dem Abspann-Sprung) bis die nächste Folge läuft, wird mitgeschrieben:
 // Zeit, Zustand und Puffer des Videos, seine Ereignisse, eigene Eingaben (nur „Klick“/Tastenname) und alles, was
@@ -35,7 +38,7 @@
   const VERB = /skip|überspring/i;
   const STABLE_MS = 500, CHECK_MS = 2000, TRIES = 3;
   const END_S = 3, STALL_MS = 1500, OUTRO_NUDGE_MS = 2500, OUTRO_STALL_MS = 3000, LOAD_STALL_MS = 6000;
-  const END_ZONE_S = 15, PAUSE_ZONE_S = 5, PAUSE_WAIT_MS = 2000, TRY_MS = 3000, WAKE_MS = 350;
+  const END_ZONE_S = 15, PAUSE_ZONE_S = 5, PAUSE_WAIT_MS = 2000, RESCUE_MS = 2000, TRY_MS = 3000, WAKE_MS = 350;
   const NEXT_RE = /^(nächste folge|nächste episode|next episode|up next|als nächstes|siguiente episodio|épisode suivante|prossimo episodio|próximo episódio)$/i;
   let on = true, active = true, timer = 0;
   // pro Knopf: { since (sichtbar seit), tries, clickedAt, from, off (stehen lassen) }; wieder frei, sobald er verschwindet
@@ -172,7 +175,7 @@
         if (location.href !== href || episode !== ep || userAt > started) return;
         const still = v.ended || v.paused || Math.abs(v.currentTime - t0) < 0.5 || v.duration - v.currentTime < 2;
         if (v.isConnected && still) advance(v, n + 1, why);
-      }, TRY_MS);
+      }, n ? TRY_MS / 2 : TRY_MS); // nach dem 2. Knopfdruck schneller zur Adresse
     }, WAKE_MS);
   }
   // Player-Leiste einblenden: Maus über dem Video bewegen (wie ein Mensch)
@@ -300,7 +303,7 @@
       lastClick = now;
       s.tries++; s.clickedAt = now;
       const from = t;
-      if (isOutro) { recStart(video, "Abspann-Knopf"); recLine(video, `Abspann-Knopf gedrückt (${desc(el)}, ${s.tries}. Klick)`); }
+      if (isOutro) { recStart(video, "Abspann-Knopf"); recLine(video, `Abspann-Knopf gedrückt (${desc(el)}, ${s.tries}. Klick)`); rescue(video, now); }
       // „seeking“ kommt sofort mit dem Ziel, auch wenn das Laden dauert (auf „seeked“ zu warten, ließ bei langsamem
       // Laden den Abspann-Merker aus und den Knopf ein zweites Mal drücken)
       video.addEventListener("seeking", () => {
@@ -361,6 +364,38 @@
     // steht weiter: zur nächsten Folge
     if (outro) return finished(video, "Hänger nach Abspann-Sprung");
     if (!video.ended) { recLine(video, "Wächter: „ended“ gemeldet"); video.dispatchEvent(new Event("ended")); } // kommt auch bei finished() an
+  }
+
+  // ===== Pausen-Wächter =====
+  // Seit 11/2026 hält der Player beim Abspann-Sprung an und spielt oft nicht weiter (Pause mitten im Abspann mit
+  // leerem Puffer oder Pause am Sprungziel kurz vor Schluss). Die Prüfung oben schläft bei Pause, darum läuft nach dem
+  // Klick auf den Abspann-Knopf dieser eigene Takt: Steht das Video 2 s in Pause (ohne eigene Eingabe), wird in den
+  // letzten 5 s gleich zur nächsten Folge gewechselt, sonst erst Abspielen angestoßen (Weg 1) und, wenn es 3 s später
+  // weiter steht, zur nächsten Folge gewechselt (Knopf, danach Adresse: Weg 2). Endet, sobald das Video 2 s läuft.
+  let rescueTimer = 0;
+  function rescue(v, since) {
+    clearInterval(rescueTimer);
+    const ep = episode;
+    let pos = v.currentTime, still = since, step = 0, moving = 0;
+    const stop = () => { clearInterval(rescueTimer); rescueTimer = 0; };
+    rescueTimer = setInterval(() => {
+      const now = Date.now(), t = v.currentTime, d = v.duration;
+      if (episode !== ep || doneEp === ep || !v.isConnected || !on || userAt > since || now - since > 90e3) return stop();
+      if (v.seeking) { still = now; return; }
+      if (Math.abs(t - pos) > 0.02) { pos = t; still = now; if (!v.paused && ++moving >= 4) stop(); return; }
+      moving = 0;
+      if ((!step && !v.paused) || now - still < (step ? 3000 : RESCUE_MS)) return; // läuft, aber steht: End-Wächter
+      if (rec) rec.bad = true;
+      if (step || v.ended || !(d - t > PAUSE_ZONE_S)) {
+        stop();
+        note(`Player steht nach Abspann-Knopf bei ${mmss(t)}/${mmss(d)}${step ? " (auch nach Anstoßen)" : ""}`);
+        return finished(v, "Stillstand nach Abspann-Knopf");
+      }
+      step = 1; still = now;
+      note(`Player bleibt nach Abspann-Knopf in Pause bei ${mmss(t)}/${mmss(d)}: Abspielen angestoßen`);
+      recLine(v, `Pausen-Wächter: ${vstate(v)}`);
+      try { v.play().catch((e) => recLine(v, `Abspielen abgelehnt (${(e && e.name) || e})`)); } catch (e) { /* kein Video mehr */ }
+    }, 500);
   }
 
   // eigentlicher Knopf zum Treffer: umgebender Knopf, sonst ein Knopf darin, sonst der Treffer selbst

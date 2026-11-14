@@ -763,6 +763,39 @@ const browser = await chromium.launch({ executablePath: fs.existsSync("/opt/pw-b
   await page.waitForTimeout(5000);
   const stalled = await page.evaluate("[__ab, __next]");
   ok("Hänger nach Abspann-Sprung: erst anstoßen, dann nächste Folge", stillEarly === 0 && stalled[0] === 1 && stalled[1] === 1, `${stillEarly} / ${JSON.stringify(stalled)}`);
+  // Player hält beim Abspann-Sprung an und spielt nicht weiter (Protokolle vom 14.11.): "end" Pause, dann Sprung kurz vor
+  // Schluss; "mid" Pause mitten im Abspann ohne Sprung, erst Abspielen löst den Sprung ans Ende aus; "dead" bleibt stehen
+  const pausedPage = async (mode) => { await page.reload(); await page.evaluate((mode) => { const v = document.getElementById("v"), b = document.getElementById("ab"); let pos = 1330;
+    Object.defineProperty(v, "duration", { get: () => 1420 });
+    Object.defineProperty(v, "currentTime", { get: () => pos, set: (x) => { pos = x; } });
+    window.__plays = 0; window.__onNext = () => { pos = 0; };
+    b.onclick = () => { __ab++; b.style.display = "none"; v.pause();
+      if (mode === "end") setTimeout(() => { pos = 1419.9; v.dispatchEvent(new Event("seeking")); v.dispatchEvent(new Event("seeked")); }, 100);
+      v.addEventListener("play", () => { __plays++; if (mode === "mid") { pos = 1420; v.dispatchEvent(new Event("ended")); } }); };
+    b.style.display = "block";
+    return v.play(); }, mode); };
+  await pausedPage("end");
+  await page.waitForTimeout(1800);
+  const pEarly = await page.evaluate("__next");
+  await page.waitForTimeout(2700);
+  const pEnd = await page.evaluate("[__ab, __next, __plays]");
+  ok("Pause nach Abspann-Sprung kurz vor Schluss: nach 2 s nächste Folge", pEarly === 0 && pEnd[0] === 1 && pEnd[1] === 1 && pEnd[2] === 0, `${pEarly} / ${JSON.stringify(pEnd)}`);
+  await pausedPage("mid");
+  await page.waitForTimeout(4500);
+  const pMid = await page.evaluate("[__ab, __next, __plays]");
+  ok("Pause mitten im Abspann ohne Sprung: Abspielen angestoßen, dann nächste Folge", pMid[0] === 1 && pMid[1] === 1 && pMid[2] === 1, JSON.stringify(pMid));
+  await pausedPage("dead");
+  await page.waitForTimeout(4000);
+  const pDead0 = await page.evaluate("[__next, __plays]");
+  await page.waitForTimeout(3500);
+  const pDead = await page.evaluate("[__ab, __next, __plays]");
+  ok("Pause im Abspann, Anstoßen hilft nicht: 3 s später nächste Folge", pDead0[0] === 0 && pDead0[1] === 1 && pDead[1] === 1, `${JSON.stringify(pDead0)} / ${JSON.stringify(pDead)}`);
+  await pausedPage("dead");
+  await page.waitForTimeout(1200);
+  await page.click("#v");
+  await page.waitForTimeout(6000);
+  const pUser = await page.evaluate("[__next, __plays]");
+  ok("Pause im Abspann, selbst geklickt: BetterRoll hält sich raus", pUser[0] === 0 && pUser[1] === 0, JSON.stringify(pUser));
   // Leiste versteckt, .click() wirkt nicht: Maus bewegen, Knopf drücken, 2. Versuch mit Mausereignissen
   const endEp5 = async (flags) => { await page.goto(BASE + "/de/watch/EEE555/folge-5"); await page.evaluate((f) => { Object.assign(window, f); const v = document.getElementById("v");
     Object.defineProperty(v, "duration", { get: () => 1420 }); Object.defineProperty(v, "currentTime", { get: () => 1420, set() {} });
